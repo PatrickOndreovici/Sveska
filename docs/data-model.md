@@ -1,10 +1,10 @@
 # Data model draft
 
-Status: draft for review. **Not migrated.** Only `000001_enable_citext` exists.
-Tables will be created phase by phase (see implementation-plan.md), each in its
-own migration.
+Status: draft for review. **Migrated so far:** `users` and `sessions` (phase 1).
+The other tables are created phase by phase (see implementation-plan.md), each
+in its own migration.
 
-Conventions: `uuid` primary keys from `gen_random_uuid()`, `timestamptz`
+Conventions: `uuid` primary keys from PostgreSQL 18's time-ordered `uuidv7()`, `timestamptz`
 everywhere, `created_at`/`updated_at` on mutable tables, soft delete only where
 history matters (`archived_at`), foreign keys always indexed, enums as
 PostgreSQL enum types.
@@ -13,8 +13,8 @@ PostgreSQL enum types.
 
 | Table | Columns | Notes |
 |---|---|---|
-| `users` | id, email `citext` unique, password_hash, display_name, role `user_role` (student, teacher), created_at, updated_at | Open question: exclusive roles. |
-| `sessions` | id, user_id → users, token_hash `bytea` unique, created_at, last_seen_at, expires_at | Only the token hash is stored. |
+| `users` | id, email `citext` unique, password_hash, display_name, role `user_role` (student, teacher), created_at, updated_at | **Migrated.** Roles are exclusive and fixed at sign-up. Length checks on email and display_name. |
+| `sessions` | id, user_id → users (cascade), token_hash `bytea` unique, created_at, expires_at | **Migrated.** Only the SHA-256 of the token is stored. Indexed on user_id. |
 
 ## Student workspace (owned by a student)
 

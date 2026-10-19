@@ -14,6 +14,8 @@ import (
 	"learning-serbian-platform/backend/internal/config"
 	"learning-serbian-platform/backend/internal/database"
 	"learning-serbian-platform/backend/internal/httpapi"
+	"learning-serbian-platform/backend/internal/identity"
+	"learning-serbian-platform/backend/internal/store"
 )
 
 func main() {
@@ -39,12 +41,21 @@ func run() error {
 	defer pool.Close()
 
 	server := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewRouter(httpapi.Dependencies{DB: pool}),
+		Addr: cfg.HTTPAddr,
+		Handler: httpapi.NewRouter(httpapi.Dependencies{
+			DB:           pool,
+			Auth:         identity.NewService(store.New(pool), cfg.SessionTTL),
+			AppOrigin:    cfg.AppOrigin,
+			CookieSecure: cfg.CookieSecure,
+		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,
+	}
+
+	if !cfg.CookieSecure {
+		slog.Warn("COOKIE_SECURE=false: session cookies are sent over plain HTTP; use only for local development")
 	}
 
 	serveErr := make(chan error, 1)

@@ -10,3 +10,13 @@ sql:
         sql_package: pgx/v5
         emit_json_tags: false
         emit_interface: false
+        overrides:
+          # Plain Go types at the boundary keep pgtype out of service code.
+          - db_type: uuid
+            go_type: string
+          - db_type: citext
+            go_type: string
+          - db_type: timestamptz
+            go_type:
+              import: time
+              type: Time

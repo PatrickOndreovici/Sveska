@@ -11,6 +11,7 @@ Every dependency must earn its place. Exact versions are pinned in `go.mod` and
 |---|---|
 | `github.com/go-chi/chi/v5` | Required router. Small, stdlib-compatible `http.Handler`, route groups, middleware (request ID, recoverer). |
 | `github.com/jackc/pgx/v5` | Required PostgreSQL driver and pool; sqlc targets it directly. |
+| `golang.org/x/crypto` | argon2id password hashing (Go team's extended standard library). |
 
 ### Frontend runtime
 
@@ -40,12 +41,16 @@ Every dependency must earn its place. Exact versions are pinned in `go.mod` and
 | `sqlc/sqlc:1.30.0` | Generates query code without installing the CLI on the host. |
 | `redocly/cli:2.6.0` | Lints the OpenAPI contract. |
 
+### Pinned command-line tools (run with npx, not installed)
+
+| Tool | Why |
+|---|---|
+| `openapi-typescript@7.13.0` | Generates `frontend/src/lib/api/schema.d.ts` from the contract. Run through `npx` because it declares a TypeScript 5 peer while the project uses TypeScript 6; npx gives it its own copy. |
+
 ## Planned, added in the phase that needs them
 
 | Package | Phase | Why |
 |---|---|---|
-| `golang.org/x/crypto` | 1 | argon2id password hashing. |
-| OpenAPI → TypeScript generator | 1 | Keep frontend types in sync with the contract. `openapi-typescript` 7.x declares a TypeScript 5 peer, so compatibility with TypeScript 6 must be verified first. |
 | `pdfjs-dist` | 2 | Required PDF rendering. |
 
 ## Deliberately not used

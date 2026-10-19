@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Sveska API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     REST API for the language-learning workspace. This file is the contract:
     endpoints are added here first, then implemented in backend/internal/httpapi
@@ -16,6 +16,8 @@ security: []
 tags:
   - name: system
     description: Operational endpoints.
+  - name: auth
+    description: Accounts and sessions.
 paths:
   /api/health:
     get:
@@ -41,7 +43,137 @@ paths:
               example:
                 status: unavailable
                 database: unreachable
+  /api/auth/signup:
+    post:
+      tags: [auth]
+      operationId: signUp
+      summary: Create an account and log in.
+      description: |
+        Creates a student or teacher account. The role cannot be changed later.
+        On success the response sets the session cookie.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignUpRequest"
+      responses:
+        "201":
+          description: Account created and logged in.
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SessionCookie"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEnvelope"
+        "403":
+          $ref: "#/components/responses/ForbiddenOrigin"
+        "409":
+          description: An account with this email already exists (code `email_taken`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/Invalid"
+  /api/auth/login:
+    post:
+      tags: [auth]
+      operationId: logIn
+      summary: Log in with email and password.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogInRequest"
+      responses:
+        "200":
+          description: Logged in.
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SessionCookie"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEnvelope"
+        "401":
+          description: |
+            Email or password is incorrect (code `invalid_credentials`). The
+            response is identical whether or not the email has an account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/ForbiddenOrigin"
+        "422":
+          $ref: "#/components/responses/Invalid"
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      operationId: logOut
+      summary: End the current session.
+      description: Always succeeds, even without a session, and clears the session cookie.
+      responses:
+        "204":
+          description: Logged out.
+        "403":
+          $ref: "#/components/responses/ForbiddenOrigin"
+  /api/me:
+    get:
+      tags: [auth]
+      operationId: getMe
+      summary: Return the logged-in user.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The current user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
 components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: sveska_session
+      description: |
+        Opaque session token set by sign-up and log-in. HttpOnly, SameSite=Lax,
+        Secure outside local development, valid for 30 days.
+  headers:
+    SessionCookie:
+      description: Sets the `sveska_session` cookie.
+      schema:
+        type: string
+  responses:
+    Unauthenticated:
+      description: No valid session (code `unauthenticated`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Invalid:
+      description: |
+        The request body is malformed (`invalid_json`, `unsupported_content_type`)
+        or fails validation (`validation_failed`, with per-field messages in `fields`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ForbiddenOrigin:
+      description: |
+        A state-changing request came from a foreign Origin (code `forbidden_origin`).
+        Requests without an Origin header (non-browser clients) are allowed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
     Health:
       type: object
@@ -54,6 +186,63 @@ components:
         database:
           type: string
           enum: [ok, unreachable]
+    Role:
+      type: string
+      enum: [student, teacher]
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, email, displayName, role, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        createdAt:
+          type: string
+          format: date-time
+    UserEnvelope:
+      type: object
+      additionalProperties: false
+      required: [user]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+    SignUpRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password, displayName, role]
+      properties:
+        email:
+          type: string
+          maxLength: 254
+          example: ana@example.com
+        password:
+          type: string
+          minLength: 10
+          maxLength: 128
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 80
+          example: Ana Petrović
+        role:
+          $ref: "#/components/schemas/Role"
+    LogInRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
     Error:
       description: Envelope returned by every non-2xx response except /api/health.
       type: object
@@ -71,3 +260,8 @@ components:
             message:
               type: string
               description: Human-readable explanation. Not for programmatic use.
+            fields:
+              type: object
+              description: Per-field problems, present only for `validation_failed`.
+              additionalProperties:
+                type: string
