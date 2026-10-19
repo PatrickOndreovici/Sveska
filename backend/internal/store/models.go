@@ -10,6 +10,93 @@ import (
 	"time"
 )
 
+type GrammaticalGender string
+
+const (
+	GrammaticalGenderMasculine GrammaticalGender = "masculine"
+	GrammaticalGenderFeminine  GrammaticalGender = "feminine"
+	GrammaticalGenderNeuter    GrammaticalGender = "neuter"
+)
+
+func (e *GrammaticalGender) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = GrammaticalGender(s)
+	case string:
+		*e = GrammaticalGender(s)
+	default:
+		return fmt.Errorf("unsupported scan type for GrammaticalGender: %T", src)
+	}
+	return nil
+}
+
+type NullGrammaticalGender struct {
+	GrammaticalGender GrammaticalGender
+	Valid             bool // Valid is true if GrammaticalGender is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullGrammaticalGender) Scan(value interface{}) error {
+	if value == nil {
+		ns.GrammaticalGender, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.GrammaticalGender.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullGrammaticalGender) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.GrammaticalGender), nil
+}
+
+type PartOfSpeech string
+
+const (
+	PartOfSpeechNoun      PartOfSpeech = "noun"
+	PartOfSpeechVerb      PartOfSpeech = "verb"
+	PartOfSpeechAdjective PartOfSpeech = "adjective"
+	PartOfSpeechOther     PartOfSpeech = "other"
+)
+
+func (e *PartOfSpeech) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PartOfSpeech(s)
+	case string:
+		*e = PartOfSpeech(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PartOfSpeech: %T", src)
+	}
+	return nil
+}
+
+type NullPartOfSpeech struct {
+	PartOfSpeech PartOfSpeech
+	Valid        bool // Valid is true if PartOfSpeech is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPartOfSpeech) Scan(value interface{}) error {
+	if value == nil {
+		ns.PartOfSpeech, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PartOfSpeech.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPartOfSpeech) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PartOfSpeech), nil
+}
+
 type UserRole string
 
 const (
@@ -52,6 +139,49 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 	return string(ns.UserRole), nil
 }
 
+type VerbAspect string
+
+const (
+	VerbAspectImperfective VerbAspect = "imperfective"
+	VerbAspectPerfective   VerbAspect = "perfective"
+	VerbAspectBiaspectual  VerbAspect = "biaspectual"
+)
+
+func (e *VerbAspect) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = VerbAspect(s)
+	case string:
+		*e = VerbAspect(s)
+	default:
+		return fmt.Errorf("unsupported scan type for VerbAspect: %T", src)
+	}
+	return nil
+}
+
+type NullVerbAspect struct {
+	VerbAspect VerbAspect
+	Valid      bool // Valid is true if VerbAspect is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullVerbAspect) Scan(value interface{}) error {
+	if value == nil {
+		ns.VerbAspect, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.VerbAspect.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullVerbAspect) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.VerbAspect), nil
+}
+
 type Session struct {
 	ID        string
 	UserID    string
@@ -71,11 +201,19 @@ type User struct {
 }
 
 type VocabularyEntry struct {
-	ID          string
-	OwnerID     string
-	Term        string
-	Translation string
-	Notes       string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID           string
+	OwnerID      string
+	Term         string
+	Translation  string
+	Notes        string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	PartOfSpeech NullPartOfSpeech
+	Example      string
+	Gender       NullGrammaticalGender
+	Plural       string
+	Aspect       NullVerbAspect
+	AspectPair   string
+	FeminineForm string
+	NeuterForm   string
 }

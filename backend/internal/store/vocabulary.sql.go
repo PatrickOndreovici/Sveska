@@ -7,6 +7,7 @@ package store
 
 import (
 	"context"
+	"time"
 )
 
 const createVocabularyEntry = `-- name: CreateVocabularyEntry :one
@@ -23,17 +24,27 @@ type CreateVocabularyEntryParams struct {
 	Notes       string
 }
 
+type CreateVocabularyEntryRow struct {
+	ID          string
+	OwnerID     string
+	Term        string
+	Translation string
+	Notes       string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 // Every query filters on owner_id: a user only ever reaches their own
 // entries, and someone else's id behaves exactly like a missing one.
 // Each returns every column, so sqlc reuses the store.VocabularyEntry model.
-func (q *Queries) CreateVocabularyEntry(ctx context.Context, arg CreateVocabularyEntryParams) (VocabularyEntry, error) {
+func (q *Queries) CreateVocabularyEntry(ctx context.Context, arg CreateVocabularyEntryParams) (CreateVocabularyEntryRow, error) {
 	row := q.db.QueryRow(ctx, createVocabularyEntry,
 		arg.OwnerID,
 		arg.Term,
 		arg.Translation,
 		arg.Notes,
 	)
-	var i VocabularyEntry
+	var i CreateVocabularyEntryRow
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
@@ -78,9 +89,19 @@ type GetVocabularyEntryParams struct {
 	OwnerID string
 }
 
-func (q *Queries) GetVocabularyEntry(ctx context.Context, arg GetVocabularyEntryParams) (VocabularyEntry, error) {
+type GetVocabularyEntryRow struct {
+	ID          string
+	OwnerID     string
+	Term        string
+	Translation string
+	Notes       string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func (q *Queries) GetVocabularyEntry(ctx context.Context, arg GetVocabularyEntryParams) (GetVocabularyEntryRow, error) {
 	row := q.db.QueryRow(ctx, getVocabularyEntry, arg.ID, arg.OwnerID)
-	var i VocabularyEntry
+	var i GetVocabularyEntryRow
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
@@ -110,17 +131,27 @@ type ListVocabularyEntriesParams struct {
 	Query   string
 }
 
+type ListVocabularyEntriesRow struct {
+	ID          string
+	OwnerID     string
+	Term        string
+	Translation string
+	Notes       string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 // Newest first. An empty query returns every entry. strpos rather than
 // LIKE, so % and _ typed by the user are matched literally.
-func (q *Queries) ListVocabularyEntries(ctx context.Context, arg ListVocabularyEntriesParams) ([]VocabularyEntry, error) {
+func (q *Queries) ListVocabularyEntries(ctx context.Context, arg ListVocabularyEntriesParams) ([]ListVocabularyEntriesRow, error) {
 	rows, err := q.db.Query(ctx, listVocabularyEntries, arg.OwnerID, arg.Query)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []VocabularyEntry
+	var items []ListVocabularyEntriesRow
 	for rows.Next() {
-		var i VocabularyEntry
+		var i ListVocabularyEntriesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OwnerID,
@@ -159,8 +190,18 @@ type UpdateVocabularyEntryParams struct {
 	OwnerID     string
 }
 
+type UpdateVocabularyEntryRow struct {
+	ID          string
+	OwnerID     string
+	Term        string
+	Translation string
+	Notes       string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 // Replaces all editable fields; the service merges a partial update first.
-func (q *Queries) UpdateVocabularyEntry(ctx context.Context, arg UpdateVocabularyEntryParams) (VocabularyEntry, error) {
+func (q *Queries) UpdateVocabularyEntry(ctx context.Context, arg UpdateVocabularyEntryParams) (UpdateVocabularyEntryRow, error) {
 	row := q.db.QueryRow(ctx, updateVocabularyEntry,
 		arg.Term,
 		arg.Translation,
@@ -168,7 +209,7 @@ func (q *Queries) UpdateVocabularyEntry(ctx context.Context, arg UpdateVocabular
 		arg.ID,
 		arg.OwnerID,
 	)
-	var i VocabularyEntry
+	var i UpdateVocabularyEntryRow
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
