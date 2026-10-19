@@ -7,44 +7,87 @@ package store
 
 import (
 	"context"
-	"time"
 )
+
+const countVocabularyEntries = `-- name: CountVocabularyEntries :one
+SELECT count(*)
+FROM vocabulary_entries
+WHERE owner_id = $1
+  AND (
+    $2::text = ''
+    OR strpos(lower(unaccent(term)), lower(unaccent($2::text))) > 0
+    OR strpos(lower(unaccent(translation)), lower(unaccent($2::text))) > 0
+    OR strpos(lower(unaccent(plural)), lower(unaccent($2::text))) > 0
+    OR strpos(lower(unaccent(aspect_pair)), lower(unaccent($2::text))) > 0
+    OR strpos(lower(unaccent(feminine_form)), lower(unaccent($2::text))) > 0
+    OR strpos(lower(unaccent(neuter_form)), lower(unaccent($2::text))) > 0
+  )
+  AND ($3::int = 0 OR created_at >= now() - make_interval(days => $3::int))
+`
+
+type CountVocabularyEntriesParams struct {
+	OwnerID string
+	Query   string
+	Days    int32
+}
+
+// The total behind ListVocabularyEntries ("11–20 of 44"), same filters.
+func (q *Queries) CountVocabularyEntries(ctx context.Context, arg CountVocabularyEntriesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countVocabularyEntries, arg.OwnerID, arg.Query, arg.Days)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
 
 const createVocabularyEntry = `-- name: CreateVocabularyEntry :one
 
-INSERT INTO vocabulary_entries (owner_id, term, translation, notes)
-VALUES ($1, $2, $3, $4)
-RETURNING id, owner_id, term, translation, notes, created_at, updated_at
+INSERT INTO vocabulary_entries (
+    owner_id, term, translation, notes, example, part_of_speech,
+    gender, plural, aspect, aspect_pair, feminine_form, neuter_form
+)
+VALUES (
+    $1, $2, $3, $4, $5, $6,
+    $7, $8, $9, $10, $11, $12
+)
+RETURNING id, owner_id, term, translation, notes, created_at, updated_at, part_of_speech, example, gender, plural, aspect, aspect_pair, feminine_form, neuter_form
 `
 
 type CreateVocabularyEntryParams struct {
-	OwnerID     string
-	Term        string
-	Translation string
-	Notes       string
-}
-
-type CreateVocabularyEntryRow struct {
-	ID          string
-	OwnerID     string
-	Term        string
-	Translation string
-	Notes       string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	OwnerID      string
+	Term         string
+	Translation  string
+	Notes        string
+	Example      string
+	PartOfSpeech NullPartOfSpeech
+	Gender       NullGrammaticalGender
+	Plural       string
+	Aspect       NullVerbAspect
+	AspectPair   string
+	FeminineForm string
+	NeuterForm   string
 }
 
 // Every query filters on owner_id: a user only ever reaches their own
 // entries, and someone else's id behaves exactly like a missing one.
-// Each returns every column, so sqlc reuses the store.VocabularyEntry model.
-func (q *Queries) CreateVocabularyEntry(ctx context.Context, arg CreateVocabularyEntryParams) (CreateVocabularyEntryRow, error) {
+// Rows come back as "*", which sqlc expands at generate time into every
+// column, so it reuses the store.VocabularyEntry model and a new column
+// shows up in Go after the next `make sqlc`.
+func (q *Queries) CreateVocabularyEntry(ctx context.Context, arg CreateVocabularyEntryParams) (VocabularyEntry, error) {
 	row := q.db.QueryRow(ctx, createVocabularyEntry,
 		arg.OwnerID,
 		arg.Term,
 		arg.Translation,
 		arg.Notes,
+		arg.Example,
+		arg.PartOfSpeech,
+		arg.Gender,
+		arg.Plural,
+		arg.Aspect,
+		arg.AspectPair,
+		arg.FeminineForm,
+		arg.NeuterForm,
 	)
-	var i CreateVocabularyEntryRow
+	var i VocabularyEntry
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
@@ -53,6 +96,14 @@ func (q *Queries) CreateVocabularyEntry(ctx context.Context, arg CreateVocabular
 		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PartOfSpeech,
+		&i.Example,
+		&i.Gender,
+		&i.Plural,
+		&i.Aspect,
+		&i.AspectPair,
+		&i.FeminineForm,
+		&i.NeuterForm,
 	)
 	return i, err
 }
@@ -78,7 +129,7 @@ func (q *Queries) DeleteVocabularyEntry(ctx context.Context, arg DeleteVocabular
 }
 
 const getVocabularyEntry = `-- name: GetVocabularyEntry :one
-SELECT id, owner_id, term, translation, notes, created_at, updated_at
+SELECT id, owner_id, term, translation, notes, created_at, updated_at, part_of_speech, example, gender, plural, aspect, aspect_pair, feminine_form, neuter_form
 FROM vocabulary_entries
 WHERE id = $1
   AND owner_id = $2
@@ -89,19 +140,9 @@ type GetVocabularyEntryParams struct {
 	OwnerID string
 }
 
-type GetVocabularyEntryRow struct {
-	ID          string
-	OwnerID     string
-	Term        string
-	Translation string
-	Notes       string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-}
-
-func (q *Queries) GetVocabularyEntry(ctx context.Context, arg GetVocabularyEntryParams) (GetVocabularyEntryRow, error) {
+func (q *Queries) GetVocabularyEntry(ctx context.Context, arg GetVocabularyEntryParams) (VocabularyEntry, error) {
 	row := q.db.QueryRow(ctx, getVocabularyEntry, arg.ID, arg.OwnerID)
-	var i GetVocabularyEntryRow
+	var i VocabularyEntry
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
@@ -110,48 +151,78 @@ func (q *Queries) GetVocabularyEntry(ctx context.Context, arg GetVocabularyEntry
 		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PartOfSpeech,
+		&i.Example,
+		&i.Gender,
+		&i.Plural,
+		&i.Aspect,
+		&i.AspectPair,
+		&i.FeminineForm,
+		&i.NeuterForm,
 	)
 	return i, err
 }
 
 const listVocabularyEntries = `-- name: ListVocabularyEntries :many
-SELECT id, owner_id, term, translation, notes, created_at, updated_at
+SELECT id, owner_id, term, translation, notes, created_at, updated_at, part_of_speech, example, gender, plural, aspect, aspect_pair, feminine_form, neuter_form
 FROM vocabulary_entries
 WHERE owner_id = $1
   AND (
     $2::text = ''
-    OR strpos(lower(term), lower($2::text)) > 0
-    OR strpos(lower(translation), lower($2::text)) > 0
+    OR strpos(lower(unaccent(term)), lower(unaccent($2::text))) > 0
+    OR strpos(lower(unaccent(translation)), lower(unaccent($2::text))) > 0
+    OR strpos(lower(unaccent(plural)), lower(unaccent($2::text))) > 0
+    OR strpos(lower(unaccent(aspect_pair)), lower(unaccent($2::text))) > 0
+    OR strpos(lower(unaccent(feminine_form)), lower(unaccent($2::text))) > 0
+    OR strpos(lower(unaccent(neuter_form)), lower(unaccent($2::text))) > 0
   )
-ORDER BY created_at DESC, id DESC
+  AND ($3::int = 0 OR created_at >= now() - make_interval(days => $3::int))
+ORDER BY
+  -- For 'newest' both CASEs are NULL for every row, so they do not affect the order.
+  CASE WHEN $4::text = 'az' THEN term COLLATE "sr-Latn-x-icu" END,
+  CASE WHEN $4::text = 'az' THEN translation COLLATE "sr-Latn-x-icu" END,
+  created_at DESC,
+  id DESC
+LIMIT $6::int
+OFFSET $5::int
 `
 
 type ListVocabularyEntriesParams struct {
-	OwnerID string
-	Query   string
+	OwnerID    string
+	Query      string
+	Days       int32
+	Sort       string
+	PageOffset int32
+	PageLimit  int32
 }
 
-type ListVocabularyEntriesRow struct {
-	ID          string
-	OwnerID     string
-	Term        string
-	Translation string
-	Notes       string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-}
-
-// Newest first. An empty query returns every entry. strpos rather than
-// LIKE, so % and _ typed by the user are matched literally.
-func (q *Queries) ListVocabularyEntries(ctx context.Context, arg ListVocabularyEntriesParams) ([]ListVocabularyEntriesRow, error) {
-	rows, err := q.db.Query(ctx, listVocabularyEntries, arg.OwnerID, arg.Query)
+// One page of entries.
+//
+//	query: '' for no search. Otherwise a case- and diacritic-insensitive
+//	       substring of the word, its translation or its other forms.
+//	       strpos rather than LIKE, so % and _ are matched literally.
+//	days:  0 for all time, otherwise only entries added in the last N days.
+//	sort:  'az' for Serbian alphabetical order, anything else for newest
+//	       first. Both end on created_at and id, so the order is total and
+//	       pages never overlap or skip a row.
+//
+// Keep the WHERE clause in step with CountVocabularyEntries.
+func (q *Queries) ListVocabularyEntries(ctx context.Context, arg ListVocabularyEntriesParams) ([]VocabularyEntry, error) {
+	rows, err := q.db.Query(ctx, listVocabularyEntries,
+		arg.OwnerID,
+		arg.Query,
+		arg.Days,
+		arg.Sort,
+		arg.PageOffset,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListVocabularyEntriesRow
+	var items []VocabularyEntry
 	for rows.Next() {
-		var i ListVocabularyEntriesRow
+		var i VocabularyEntry
 		if err := rows.Scan(
 			&i.ID,
 			&i.OwnerID,
@@ -160,6 +231,14 @@ func (q *Queries) ListVocabularyEntries(ctx context.Context, arg ListVocabularyE
 			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.PartOfSpeech,
+			&i.Example,
+			&i.Gender,
+			&i.Plural,
+			&i.Aspect,
+			&i.AspectPair,
+			&i.FeminineForm,
+			&i.NeuterForm,
 		); err != nil {
 			return nil, err
 		}
@@ -173,43 +252,57 @@ func (q *Queries) ListVocabularyEntries(ctx context.Context, arg ListVocabularyE
 
 const updateVocabularyEntry = `-- name: UpdateVocabularyEntry :one
 UPDATE vocabulary_entries
-SET term        = $1,
-    translation = $2,
-    notes       = $3,
-    updated_at  = now()
-WHERE id = $4
-  AND owner_id = $5
-RETURNING id, owner_id, term, translation, notes, created_at, updated_at
+SET term           = $1,
+    translation    = $2,
+    notes          = $3,
+    example        = $4,
+    part_of_speech = $5,
+    gender         = $6,
+    plural         = $7,
+    aspect         = $8,
+    aspect_pair    = $9,
+    feminine_form  = $10,
+    neuter_form    = $11,
+    updated_at     = now()
+WHERE id = $12
+  AND owner_id = $13
+RETURNING id, owner_id, term, translation, notes, created_at, updated_at, part_of_speech, example, gender, plural, aspect, aspect_pair, feminine_form, neuter_form
 `
 
 type UpdateVocabularyEntryParams struct {
-	Term        string
-	Translation string
-	Notes       string
-	ID          string
-	OwnerID     string
-}
-
-type UpdateVocabularyEntryRow struct {
-	ID          string
-	OwnerID     string
-	Term        string
-	Translation string
-	Notes       string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	Term         string
+	Translation  string
+	Notes        string
+	Example      string
+	PartOfSpeech NullPartOfSpeech
+	Gender       NullGrammaticalGender
+	Plural       string
+	Aspect       NullVerbAspect
+	AspectPair   string
+	FeminineForm string
+	NeuterForm   string
+	ID           string
+	OwnerID      string
 }
 
 // Replaces all editable fields; the service merges a partial update first.
-func (q *Queries) UpdateVocabularyEntry(ctx context.Context, arg UpdateVocabularyEntryParams) (UpdateVocabularyEntryRow, error) {
+func (q *Queries) UpdateVocabularyEntry(ctx context.Context, arg UpdateVocabularyEntryParams) (VocabularyEntry, error) {
 	row := q.db.QueryRow(ctx, updateVocabularyEntry,
 		arg.Term,
 		arg.Translation,
 		arg.Notes,
+		arg.Example,
+		arg.PartOfSpeech,
+		arg.Gender,
+		arg.Plural,
+		arg.Aspect,
+		arg.AspectPair,
+		arg.FeminineForm,
+		arg.NeuterForm,
 		arg.ID,
 		arg.OwnerID,
 	)
-	var i UpdateVocabularyEntryRow
+	var i VocabularyEntry
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
@@ -218,6 +311,14 @@ func (q *Queries) UpdateVocabularyEntry(ctx context.Context, arg UpdateVocabular
 		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PartOfSpeech,
+		&i.Example,
+		&i.Gender,
+		&i.Plural,
+		&i.Aspect,
+		&i.AspectPair,
+		&i.FeminineForm,
+		&i.NeuterForm,
 	)
 	return i, err
 }
