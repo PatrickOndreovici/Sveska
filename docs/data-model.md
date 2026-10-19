@@ -1,6 +1,6 @@
 # Data model draft
 
-Status: draft for review. **Migrated so far:** `users` and `sessions` (phase 1).
+Status: draft for review. **Migrated so far:** `users` and `sessions` (phase 1), `vocabulary_entries`.
 The other tables are created phase by phase (see implementation-plan.md), each
 in its own migration.
 
@@ -23,7 +23,7 @@ PostgreSQL enum types.
 | `lessons` | id, owner_id → users, title, description, position, created_at, updated_at, archived_at | A student's own unit of study. |
 | `documents` | id, owner_id → users, lesson_id → lessons null, title, storage_key, byte_size, sha256, page_count, created_at | PDF metadata; bytes in file storage. Owner may be a teacher (assignment material). |
 | `annotations` | id, document_id → documents, owner_id → users, page_number, kind (highlight, note), rects `jsonb`, quote, body, created_at, updated_at | `rects`: array of {x, y, w, h} in 0–1 page coordinates. |
-| `vocabulary_entries` | id, owner_id → users, term, translation, notes, source_annotation_id → annotations null, created_at, updated_at | Unique on (owner_id, lower(term), translation). |
+| `vocabulary_entries` | id, owner_id → users, term, translation, notes, source_annotation_id → annotations null, created_at, updated_at | **Migrated** without `source_annotation_id`, which is added once `annotations` exists. `notes` is `''` when empty. Unique index on (owner_id, lower(term), translation). |
 | `quizzes` | id, owner_id → users, lesson_id → lessons null, title, created_at, updated_at | Authored by a student for self-study or by a teacher for an assignment. |
 | `quiz_questions` | id, quiz_id → quizzes, position, kind (multiple_choice, short_answer), prompt, choices `jsonb`, answer `jsonb` | Answers are never sent to a student before submission. |
 | `quiz_attempts` | id, quiz_id → quizzes, user_id → users, started_at, submitted_at, score, max_score | |
