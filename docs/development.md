@@ -36,7 +36,9 @@ Vite proxies `/api` to the API, so the browser sees one origin.
 ## Everyday commands
 
 ```sh
-make check                      # gofmt, vet, Go tests, typecheck, lint, Vitest, OpenAPI lint
+make check                      # gofmt, vet, Go tests, typecheck, lint, Vitest, OpenAPI lint, generated-code drift
+make test-integration           # Go tests against the lsp_test database (needs db-up)
+make gen                        # regenerate Go queries and frontend API types
 make migrate-new name=create_users
 make migrate-up / migrate-down  # down rolls back one step
 make sqlc                       # regenerate backend/internal/store
@@ -46,7 +48,9 @@ make db-reset                   # DELETES local data, recreates and migrates
 
 ## Notes
 
-- `make sqlc` fails until the first query file exists in
-  `backend/db/queries`. This is expected in phase 0.
+- New settings in phase 1: `APP_ORIGIN`, `COOKIE_SECURE`, `POSTGRES_TEST_DB`
+  and `TEST_DATABASE_URL`. Copy them from `.env.example` into an existing `.env`.
+- `COOKIE_SECURE=false` is for local HTTP only. Any deployed environment must
+  leave it unset (the default is `true`).
 - PostgreSQL 18 stores data under `/var/lib/postgresql/18`; the Compose volume
   is mounted at `/var/lib/postgresql` accordingly.

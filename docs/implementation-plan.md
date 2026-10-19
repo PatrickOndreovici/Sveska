@@ -9,14 +9,15 @@ Configuration, Docker Compose PostgreSQL, migrations tooling, sqlc config, Go AP
 with `/api/health`, React shell with routing and 404, design tokens (Ink Blue,
 light and dark with a Light/Dark/System switch), Sveska logo and favicon, UI primitives, checks in the Makefile.
 
-## Phase 1 — Identity and authorization skeleton
+## Phase 1 — Identity and authorization skeleton (done)
 
 - Migrations: `users`, `sessions`.
 - First sqlc queries; confirm `make sqlc` generates `internal/store`.
 - Sign-up with role, log in, log out, `GET /api/me`.
 - Session middleware, `Actor` in context, `access` package, error mapping.
 - Integration test harness against a dedicated PostgreSQL test database.
-- Decide frontend type generation from OpenAPI.
+- Decide frontend type generation from OpenAPI. Decided: openapi-typescript
+  run as a pinned `npx` tool, output committed, drift checked by `make check`.
 - Frontend: auth pages, protected route wrapper, role-aware navigation.
 - Exit: a student and a teacher can register and log in; unauthenticated
   requests to protected endpoints return 401; tests cover each rule.
@@ -51,5 +52,5 @@ light and dark with a Light/Dark/System switch), Sveska logo and favicon, UI pri
 ## Phase 7 — Hardening and release preparation
 
 - Rate limiting on auth endpoints, security headers, audit of authorization tests.
-- Accessibility pass, self-hosted fonts.
+- Rate limiting on log-in and sign-up, accessibility pass, self-hosted fonts.
 - Production Dockerfiles and CI running `make check`.

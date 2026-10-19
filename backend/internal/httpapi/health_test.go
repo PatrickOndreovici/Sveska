@@ -21,7 +21,7 @@ func get(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
 }
 
 func TestHealthReportsOKWhenDatabaseReachable(t *testing.T) {
-	rec := get(t, NewRouter(Dependencies{DB: fakePinger{}}), "/api/health")
+	rec := get(t, NewRouter(Dependencies{DB: fakePinger{}, Auth: &fakeAuth{}, AppOrigin: testOrigin}), "/api/health")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -39,7 +39,7 @@ func TestHealthReportsOKWhenDatabaseReachable(t *testing.T) {
 }
 
 func TestHealthReportsUnavailableWhenDatabaseDown(t *testing.T) {
-	rec := get(t, NewRouter(Dependencies{DB: fakePinger{err: errors.New("connection refused")}}), "/api/health")
+	rec := get(t, NewRouter(Dependencies{DB: fakePinger{err: errors.New("connection refused")}, Auth: &fakeAuth{}, AppOrigin: testOrigin}), "/api/health")
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
@@ -54,7 +54,7 @@ func TestHealthReportsUnavailableWhenDatabaseDown(t *testing.T) {
 }
 
 func TestUnknownRouteReturnsJSONError(t *testing.T) {
-	rec := get(t, NewRouter(Dependencies{DB: fakePinger{}}), "/api/does-not-exist")
+	rec := get(t, NewRouter(Dependencies{DB: fakePinger{}, Auth: &fakeAuth{}, AppOrigin: testOrigin}), "/api/does-not-exist")
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
@@ -70,7 +70,7 @@ func TestUnknownRouteReturnsJSONError(t *testing.T) {
 
 func TestWrongMethodReturnsJSONError(t *testing.T) {
 	rec := httptest.NewRecorder()
-	NewRouter(Dependencies{DB: fakePinger{}}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/health", nil))
+	NewRouter(Dependencies{DB: fakePinger{}, Auth: &fakeAuth{}, AppOrigin: testOrigin}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/health", nil))
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)

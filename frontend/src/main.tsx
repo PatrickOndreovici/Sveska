@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
 import { routes } from "./app/routes";
+import { AuthProvider } from "./features/auth/AuthProvider";
 import { ThemeProvider } from "./lib/theme/ThemeProvider";
 import "./styles/index.css";
 
@@ -11,7 +12,9 @@ if (!rootElement) throw new Error("Missing #root element in index.html");
 createRoot(rootElement).render(
   <StrictMode>
     <ThemeProvider>
-      <RouterProvider router={createBrowserRouter(routes)} />
+      <AuthProvider>
+        <RouterProvider router={createBrowserRouter(routes)} />
+      </AuthProvider>
     </ThemeProvider>
   </StrictMode>,
 );

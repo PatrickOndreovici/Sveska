@@ -12,7 +12,8 @@
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "gen:api": "npx --yes openapi-typescript@7.13.0 ../api/openapi.yaml --output src/lib/api/schema.d.ts"
   },
   "dependencies": {
     "react": "19.3.1",
