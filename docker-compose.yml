@@ -1,0 +1,45 @@
+# Local development services. The Go API and the Vite dev server run on the
+# host for fast reloads; see docs/development.md.
+name: learning-serbian-platform
+
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT}:5432"
+    volumes:
+      # PostgreSQL 18 images keep data under /var/lib/postgresql/<major>.
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # One-off tool containers, run through the Makefile (profile "tools").
+  migrate:
+    image: migrate/migrate:v4.19.0
+    profiles: ["tools"]
+    volumes:
+      - ./backend/db/migrations:/migrations
+    entrypoint:
+      - migrate
+      - -path=/migrations
+      - -database=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+
+  sqlc:
+    image: sqlc/sqlc:1.30.0
+    profiles: ["tools"]
+    working_dir: /src
+    volumes:
+      - ./backend:/src
+
+volumes:
+  db-data:

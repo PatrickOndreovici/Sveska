@@ -1,0 +1,13 @@
+.env
+.DS_Store
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# Backend
+backend/bin/
+
+# Tooling
+.playwright-mcp/

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+  <style>
+    .ink { stroke: #16191f; } .margin { stroke: #2a4fa8; }
+    @media (prefers-color-scheme: dark) { .ink { stroke: #e7eaf0; } .margin { stroke: #8fb0ff; } }
+  </style>
+  <rect class="ink" x="7" y="4" width="26" height="32" rx="3" fill="none" stroke-width="3"/>
+  <line class="margin" x1="14" y1="4" x2="14" y2="36" stroke-width="3"/>
+  <line class="ink" x1="18" y1="14" x2="28" y2="14" stroke-width="2.5" stroke-linecap="round"/>
+  <line class="ink" x1="18" y1="21" x2="28" y2="21" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

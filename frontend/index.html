@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sveska</title>
+    <script>
+      // Apply the saved theme before first paint so the page never flashes the wrong colors.
+      // Mirrors readPreference + resolveTheme in src/lib/theme/theme.ts; keep the key in sync.
+      (function () {
+        var preference = "system";
+        try {
+          var stored = localStorage.getItem("sveska.theme");
+          if (stored === "light" || stored === "dark") preference = stored;
+        } catch (e) {}
+        var dark =
+          preference === "dark" ||
+          (preference === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      })();
+    </script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Source Serif 4 and IBM Plex Sans both cover Latin Extended (č ć š ž đ) and Cyrillic.
+         Self-host these before production; see docs/architecture.md. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

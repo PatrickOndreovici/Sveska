@@ -1,0 +1,73 @@
+openapi: 3.1.0
+info:
+  title: Sveska API
+  version: 0.1.0
+  description: |
+    REST API for the language-learning workspace. This file is the contract:
+    endpoints are added here first, then implemented in backend/internal/httpapi
+    and consumed by the frontend.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: http://localhost:8080
+    description: Local development
+security: []
+tags:
+  - name: system
+    description: Operational endpoints.
+paths:
+  /api/health:
+    get:
+      tags: [system]
+      operationId: getHealth
+      summary: Report API and database reachability.
+      responses:
+        "200":
+          description: The API is running and the database is reachable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+              example:
+                status: ok
+                database: ok
+        "503":
+          description: The API is running but the database is unreachable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+              example:
+                status: unavailable
+                database: unreachable
+components:
+  schemas:
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status, database]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+        database:
+          type: string
+          enum: [ok, unreachable]
+    Error:
+      description: Envelope returned by every non-2xx response except /api/health.
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable, machine-readable error code such as not_found.
+            message:
+              type: string
+              description: Human-readable explanation. Not for programmatic use.

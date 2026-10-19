@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+/* `dark:` utilities follow the resolved theme set on <html data-theme>. Prefer tokens;
+   reach for `dark:` only when a component needs a genuinely different treatment. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+ * Design tokens. Palette: Ink Blue (see docs/architecture.md).
+ *
+ * The default Tailwind palette is removed so every color in the app comes
+ * from this list. Names describe purpose (paper, ink, rule, accent), not hue,
+ * so dark mode redefines the same names further down.
+ *
+ * Direction: blue ink on clean paper. Cool off-white, near-black text, one
+ * deep blue accent for actions and links only. Green and red are reserved for
+ * correct/incorrect and errors; yellow is reserved for the highlighter.
+ */
+@theme {
+  --color-*: initial;
+
+  --color-paper: #f7f8fa;
+  --color-paper-raised: #ffffff;
+  --color-paper-sunken: #eef0f4;
+
+  --color-ink: #16191f;
+  --color-ink-muted: #545b68;
+  /* Tertiary text: passes 4.5:1 on paper, weakest text color allowed. */
+  --color-ink-subtle: #6a7280;
+
+  --color-rule: #dfe3ea;
+  --color-rule-strong: #b8bfcb;
+
+  --color-accent: #2a4fa8;
+  --color-accent-hover: #223f87;
+  --color-accent-soft: #e6ecf8;
+  --color-on-accent: #ffffff;
+
+  --color-success: #2f7a4a;
+  --color-warning: #8a5e10;
+  --color-danger: #b3362c;
+
+  /* Reserved for PDF annotations and vocabulary highlights. */
+  --color-highlight: #fbe7a1;
+
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --font-serif: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+
+  --text-display: 2.75rem;
+  --text-display--line-height: 1.1;
+  --text-display--letter-spacing: -0.015em;
+
+  --text-eyebrow: 0.75rem;
+  --text-eyebrow--line-height: 1rem;
+  --text-eyebrow--letter-spacing: 0.12em;
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+
+  --container-prose: 38rem;
+  --container-page: 72rem;
+}
+
+/*
+ * Dark mode: same token names, different values.
+ * <html data-theme> is always "light" or "dark". The inline script in
+ * index.html sets it before first paint, and ThemeProvider keeps it current
+ * (including following the OS when the preference is "system").
+ */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-paper: #12151b;
+  --color-paper-raised: #1a1e26;
+  --color-paper-sunken: #0d1015;
+
+  --color-ink: #e7eaf0;
+  --color-ink-muted: #9aa3b2;
+  --color-ink-subtle: #7c8595;
+
+  --color-rule: #2c323d;
+  --color-rule-strong: #465061;
+
+  --color-accent: #8fb0ff;
+  --color-accent-hover: #b3c9ff;
+  --color-accent-soft: #1c2a4a;
+  --color-on-accent: #0f1420;
+
+  --color-success: #6cc08b;
+  --color-warning: #e0b45c;
+  --color-danger: #f08a7f;
+
+  --color-highlight: #5c4d1a;
+}
+
+@layer base {
+  html {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: var(--color-highlight);
+    color: var(--color-ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}

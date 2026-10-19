@@ -1,0 +1,37 @@
+import type { ComponentProps } from "react";
+import { cx } from "./cx";
+
+type Variant = "primary" | "secondary" | "quiet";
+type Size = "sm" | "md";
+
+const variantClasses: Record<Variant, string> = {
+  primary: "bg-accent text-on-accent hover:bg-accent-hover",
+  secondary: "border border-rule-strong bg-paper-raised text-ink hover:border-ink",
+  quiet: "text-ink-muted hover:text-ink underline-offset-4 hover:underline",
+};
+
+const sizeClasses: Record<Size, string> = {
+  sm: "h-8 px-3 text-sm",
+  md: "h-10 px-4 text-sm",
+};
+
+export type ButtonProps = ComponentProps<"button"> & {
+  variant?: Variant;
+  size?: Size;
+};
+
+export function Button({ variant = "primary", size = "md", className, type = "button", ...rest }: ButtonProps) {
+  return (
+    <button
+      type={type}
+      className={cx(
+        "inline-flex items-center justify-center gap-2 rounded-sm font-medium transition-colors",
+        "disabled:cursor-not-allowed disabled:opacity-50",
+        variantClasses[variant],
+        sizeClasses[size],
+        className,
+      )}
+      {...rest}
+    />
+  );
+}

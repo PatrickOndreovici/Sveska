@@ -1,0 +1,5 @@
+extends:
+  - recommended
+rules:
+  # The only server is local development; localhost is intentional.
+  no-server-example.com: off
