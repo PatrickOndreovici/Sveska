@@ -69,3 +69,13 @@ type User struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
+
+type VocabularyEntry struct {
+	ID          string
+	OwnerID     string
+	Term        string
+	Translation string
+	Notes       string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
