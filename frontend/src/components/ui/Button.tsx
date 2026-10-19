@@ -1,13 +1,15 @@
 import type { ComponentProps } from "react";
 import { cx } from "./cx";
 
-type Variant = "primary" | "secondary" | "quiet";
+type Variant = "primary" | "secondary" | "quiet" | "danger";
 type Size = "sm" | "md";
 
 const variantClasses: Record<Variant, string> = {
   primary: "bg-accent text-on-accent hover:bg-accent-hover",
   secondary: "border border-rule-strong bg-paper-raised text-ink hover:border-ink",
   quiet: "text-ink-muted hover:text-ink underline-offset-4 hover:underline",
+  // For the confirming button of a destructive action only.
+  danger: "bg-danger text-on-accent hover:opacity-90",
 };
 
 const sizeClasses: Record<Size, string> = {
