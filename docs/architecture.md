@@ -202,6 +202,14 @@ Rules:
   the page's text over the canvas as invisible, selectable spans (its text
   layer; the CSS for it is copied into `lib/pdf/textLayer.css`).
 - Annotations are highlights on selected text, each with an optional note.
+- Students also write and draw on pages, as on a worksheet: strokes drawn
+  with a pen (`ink_strokes`) and text typed where they click (`text_boxes`),
+  in three colours. Both use the same 0–1 page coordinates as highlights.
+  The drawing is laid over the PDF's text, and lets pointers through to it
+  while the select tool is in use.
+- Drawing changes show at once and are saved in the background, one request
+  after another (`useDrawings`). Each change can be undone, which sends the
+  opposite request; a failed save reloads what the API has.
 - An annotation is anchored by page number plus rectangles in normalized page
   coordinates (0–1), with the selected text stored as a quote. This survives
   zoom changes and lets vocabulary entries cite their source.

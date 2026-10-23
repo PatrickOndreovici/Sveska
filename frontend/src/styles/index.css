@@ -45,6 +45,10 @@
      white in dark mode, so these are not redefined there. */
   --color-page-highlight: #fbe08a;
   --color-page-highlight-active: #f5c542;
+  /* Pens for writing and drawing on a PDF page; also kept in dark mode. */
+  --color-pen-black: #1b1f27;
+  --color-pen-blue: #1f4fd1;
+  --color-pen-red: #d0312d;
 
   --color-transparent: transparent;
   --color-current: currentColor;

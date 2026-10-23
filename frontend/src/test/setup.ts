@@ -15,3 +15,8 @@ HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
   this.open = false;
   this.dispatchEvent(new Event("close"));
 };
+
+// jsdom has no pointer capture. The drawing layer captures the pointer so a
+// stroke continues past the page's edge; in tests the calls only need to exist.
+Element.prototype.setPointerCapture = () => undefined;
+Element.prototype.releasePointerCapture = () => undefined;

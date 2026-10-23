@@ -37,15 +37,27 @@ type PdfViewerProps = {
   onHighlightClick: (id: string | null) => void;
   /** What to offer for selected text, shown just below it. `dismiss` drops the selection. */
   selectionActions: (selection: TextSelection, dismiss: () => void) => ReactNode;
+  /** False while another tool than text selection is in use, such as a pen. */
+  selectable: boolean;
+  /** Shown between the page controls and the page. */
+  tools: ReactNode;
+  /** Laid over the page, above its text: what was written and drawn on it. */
+  overlay: (page: { pageNumber: number; scale: number }) => ReactNode;
 };
+
+/** Typing in a text field on the page must not turn pages. */
+function isTextField(target: EventTarget): boolean {
+  return target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement;
+}
 
 /**
  * Shows one page at a time with page and zoom controls. The page's text can
- * be selected, and saved highlights are drawn over it. The arrow keys turn
- * pages while the page area has focus.
+ * be selected, saved highlights are drawn under it and the overlay above
+ * it. The arrow keys turn pages while the page area has focus.
  */
 export function PdfViewer(props: PdfViewerProps) {
   const { url, title, page, onPageChange, highlights, activeHighlightId, onHighlightClick, selectionActions } = props;
+  const { selectable, tools, overlay } = props;
   const [doc, setDoc] = useState<PdfDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
   // What is typed in the page box, or null to show the current page.
@@ -56,6 +68,12 @@ export function PdfViewer(props: PdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
   const pointerDown = useRef(false);
+  // A selection made before another tool was picked is dropped, not shown again later.
+  const [wasSelectable, setWasSelectable] = useState(selectable);
+  if (wasSelectable !== selectable) {
+    setWasSelectable(selectable);
+    setSelection(null);
+  }
 
   useEffect(() => {
     let active = true;
@@ -117,7 +135,7 @@ export function PdfViewer(props: PdfViewerProps) {
       clearTimeout(timer);
       timer = setTimeout(() => {
         const box = pageRef.current;
-        if (pointerDown.current || !box) return;
+        if (!selectable || pointerDown.current || !box) return;
         const found = readSelection(box);
         if (found) setSelection({ ...found, pageNumber: shownPage });
       }, 250);
@@ -127,7 +145,7 @@ export function PdfViewer(props: PdfViewerProps) {
       clearTimeout(timer);
       document.removeEventListener("selectionchange", onSelectionChange);
     };
-  }, [shownPage]);
+  }, [shownPage, selectable]);
 
   if (error) {
     return (
@@ -159,7 +177,7 @@ export function PdfViewer(props: PdfViewerProps) {
   function handlePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
     pointerDown.current = false;
     const box = pageRef.current;
-    if (!box) return;
+    if (!selectable || !box) return;
     const found = readSelection(box);
     if (found) {
       setSelection({ ...found, pageNumber: shownPage });
@@ -260,12 +278,15 @@ export function PdfViewer(props: PdfViewerProps) {
         </div>
       </div>
 
+      {tools}
+
       {/* Zoomed pages scroll inside this box, never the whole page. */}
       <div
         tabIndex={0}
         aria-label={`${title}, page ${String(shownPage)} of ${String(pageCount)}`}
         role="region"
         onKeyDown={(event) => {
+          if (isTextField(event.target)) return;
           if (event.key === "Escape") dismissSelection();
           // Shift+arrows extend a selection rather than turn the page.
           if (event.shiftKey) return;
@@ -311,6 +332,7 @@ export function PdfViewer(props: PdfViewerProps) {
             )}
           </div>
           <div ref={textLayerRef} className="textLayer" />
+          {overlay({ pageNumber: shownPage, scale })}
 
           {shownSelection && anchor && (
             <div

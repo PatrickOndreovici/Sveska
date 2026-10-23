@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Annotation } from "../../lib/api/types";
+import type { Annotation, Stroke, StrokeInput, TextBox, TextBoxInput } from "../../lib/api/types";
 import { loadPdf, type PdfDocument } from "../../lib/pdf/pdf";
 import { readSelection, type PageSelection } from "../../lib/pdf/selection";
 import { mockApi, student, type MockHandler } from "../../test/mockApi";
@@ -108,6 +108,8 @@ function renderDocument(
       annotations = annotations.filter((a) => a.id !== "a1");
       return { status: 204 };
     },
+    "GET /api/documents/d1/strokes": { status: 200, body: { strokes: [] } },
+    "GET /api/documents/d1/text-boxes": { status: 200, body: { textBoxes: [] } },
     ...overrides,
   });
   const router = renderApp(path);
@@ -418,5 +420,284 @@ describe("DocumentPage", () => {
     expect(await screen.findByRole("region", { name: /page 1 of 3/ })).toBeInTheDocument();
     await userEvent.click(panel().getByRole("button", { name: "Try again" }));
     expect(await panel().findByText("Idem kući.")).toBeInTheDocument();
+  });
+});
+
+const circled: Stroke = {
+  id: "s1",
+  documentId: "d1",
+  pageNumber: 1,
+  color: "red",
+  points: [
+    { x: 0.1, y: 0.1 },
+    { x: 0.2, y: 0.1 },
+  ],
+  createdAt: "2026-10-23T10:00:00Z",
+};
+
+const answered: TextBox = {
+  id: "t1",
+  documentId: "d1",
+  pageNumber: 1,
+  x: 0.5,
+  y: 0.25,
+  text: "kuća",
+  color: "blue",
+  createdAt: "2026-10-23T10:00:00Z",
+  updatedAt: "2026-10-23T10:00:00Z",
+};
+
+/** The drawing endpoints, starting with the given strokes and text; new ones get ids stroke-1, text-1 and so on. */
+function drawingApi(strokes: Stroke[] = [], textBoxes: TextBox[] = []): Record<string, MockHandler> {
+  let created = 0;
+  return {
+    "GET /api/documents/d1/strokes": { status: 200, body: { strokes } },
+    "GET /api/documents/d1/text-boxes": { status: 200, body: { textBoxes } },
+    "POST /api/documents/d1/strokes": (body) => {
+      created++;
+      const stroke = { ...(body as StrokeInput), id: `stroke-${String(created)}`, documentId: "d1", createdAt: "" };
+      return { status: 201, body: { stroke } };
+    },
+    "POST /api/documents/d1/text-boxes": (body) => {
+      created++;
+      const textBox = { ...(body as TextBoxInput), id: `text-${String(created)}`, documentId: "d1" };
+      return { status: 201, body: { textBox } };
+    },
+    "DELETE /api/strokes/s1": { status: 204 },
+    "DELETE /api/strokes/stroke-1": { status: 204 },
+    "PUT /api/text-boxes/t1": (body) => ({ status: 200, body: { textBox: { ...answered, ...(body as TextBoxInput) } } }),
+    "DELETE /api/text-boxes/t1": { status: 204 },
+  };
+}
+
+/** Picks a drawing tool once what is already drawn has loaded. */
+async function pickTool(name: "Select" | "Pen" | "Text" | "Eraser") {
+  const button = await screen.findByRole("button", { name });
+  await waitFor(() => {
+    expect(button).toBeEnabled();
+  });
+  await userEvent.click(button);
+}
+
+/** The drawing layer of the page shown, laid out as a 600×800 page at the top-left corner. */
+async function drawingLayer() {
+  const layer = await screen.findByTestId("drawing-layer");
+  vi.spyOn(layer, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 600, 800));
+  return layer;
+}
+
+/** Presses on the first point, moves through the others and lifts on the last. */
+function drag(target: Element, layer: Element, points: [number, number][]) {
+  const [[x, y] = [0, 0], ...rest] = points;
+  fireEvent.pointerDown(target, { clientX: x, clientY: y, pointerId: 1 });
+  for (const [mx, my] of rest) fireEvent.pointerMove(layer, { clientX: mx, clientY: my, pointerId: 1 });
+  const [ux, uy] = rest.at(-1) ?? [x, y];
+  fireEvent.pointerUp(layer, { clientX: ux, clientY: uy, pointerId: 1 });
+}
+
+function sent(fetchSpy: ReturnType<typeof mockApi>, method: string, url: string): unknown[] {
+  return calls(fetchSpy, method, url).map(([, init]) => JSON.parse(init?.body as string) as unknown);
+}
+
+describe("DocumentPage drawing", () => {
+  it("draws with the pen and saves the stroke", async () => {
+    const { fetchSpy } = renderDocument("/documents/d1", [], drawingApi());
+    await pickTool("Pen");
+    await userEvent.click(screen.getByRole("button", { name: "Red" }));
+    const layer = await drawingLayer();
+
+    drag(layer, layer, [
+      [60, 80],
+      [120, 80],
+      [120, 160],
+    ]);
+
+    await waitFor(() => {
+      expect(sent(fetchSpy, "POST", "/api/documents/d1/strokes")).toEqual([
+        {
+          pageNumber: 1,
+          color: "red",
+          points: [
+            { x: 0.1, y: 0.1 },
+            { x: 0.2, y: 0.1 },
+            { x: 0.2, y: 0.2 },
+          ],
+        },
+      ]);
+    });
+    expect(layer.querySelectorAll("path[data-stroke]")).toHaveLength(1);
+  });
+
+  it("does not select text while the pen is in use", async () => {
+    renderDocument("/documents/d1", [], drawingApi());
+    await pickTool("Pen");
+
+    vi.mocked(readSelection).mockReturnValueOnce(selected);
+    fireEvent.pointerUp(await screen.findByTestId("pdf-page"));
+
+    expect(screen.queryByRole("toolbar", { name: "Selected text" })).not.toBeInTheDocument();
+  });
+
+  it("erases the strokes and text it passes over, and undoes that", async () => {
+    const { fetchSpy } = renderDocument("/documents/d1", [], drawingApi([circled], [answered]));
+    await pickTool("Eraser");
+    const layer = await drawingLayer();
+    const text = await screen.findByText("kuća");
+    vi.spyOn(text, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 200, 40, 18));
+
+    // From a point on the stroke to one on the text.
+    drag(layer, layer, [
+      [90, 82],
+      [310, 210],
+    ]);
+
+    await waitFor(() => {
+      expect(calls(fetchSpy, "DELETE", "/api/strokes/s1")).toHaveLength(1);
+    });
+    expect(calls(fetchSpy, "DELETE", "/api/text-boxes/t1")).toHaveLength(1);
+    expect(layer.querySelectorAll("path[data-stroke]")).toHaveLength(0);
+    expect(screen.queryByText("kuća")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+
+    expect(await screen.findByText("kuća")).toBeInTheDocument();
+    expect(layer.querySelectorAll("path[data-stroke]")).toHaveLength(1);
+    await waitFor(() => {
+      expect(sent(fetchSpy, "POST", "/api/documents/d1/text-boxes")).toEqual([
+        { pageNumber: 1, x: 0.5, y: 0.25, text: "kuća", color: "blue" },
+      ]);
+    });
+    expect(sent(fetchSpy, "POST", "/api/documents/d1/strokes")).toEqual([
+      { pageNumber: 1, color: "red", points: circled.points },
+    ]);
+    expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+  });
+
+  it("types text where the page is clicked", async () => {
+    const { fetchSpy } = renderDocument("/documents/d1", [], drawingApi());
+    await pickTool("Text");
+    await userEvent.click(screen.getByRole("button", { name: "Blue" }));
+    const layer = await drawingLayer();
+
+    drag(layer, layer, [[300, 400]]);
+    const input = await screen.findByRole("textbox", { name: "Text on the page" });
+    expect(input).toHaveFocus();
+    await userEvent.type(input, "kuća{Enter}");
+
+    expect(await screen.findByText("kuća")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Text on the page" })).not.toBeInTheDocument();
+    await waitFor(() => {
+      // The first line is centred on the click: half a 17.5px line above it.
+      expect(sent(fetchSpy, "POST", "/api/documents/d1/text-boxes")).toEqual([
+        { pageNumber: 1, x: 0.5, y: 0.4891, text: "kuća", color: "blue" },
+      ]);
+    });
+  });
+
+  it("finishes the text when the page is pressed elsewhere", async () => {
+    const { fetchSpy } = renderDocument("/documents/d1", [], drawingApi());
+    await pickTool("Text");
+    const layer = await drawingLayer();
+
+    drag(layer, layer, [[300, 400]]);
+    await userEvent.type(await screen.findByRole("textbox", { name: "Text on the page" }), "kuća");
+    drag(layer, layer, [[60, 80]]);
+
+    expect(await screen.findByText("kuća")).toBeInTheDocument();
+    // That press only finished the text; the next one starts new text.
+    expect(screen.queryByRole("textbox", { name: "Text on the page" })).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(calls(fetchSpy, "POST", "/api/documents/d1/text-boxes")).toHaveLength(1);
+    });
+  });
+
+  it("leaves nothing behind when no text is typed", async () => {
+    const { fetchSpy } = renderDocument("/documents/d1", [], drawingApi());
+    await pickTool("Text");
+    const layer = await drawingLayer();
+
+    drag(layer, layer, [[300, 400]]);
+    await userEvent.type(await screen.findByRole("textbox", { name: "Text on the page" }), "   {Enter}");
+
+    expect(screen.queryByRole("textbox", { name: "Text on the page" })).not.toBeInTheDocument();
+    expect(calls(fetchSpy, "POST", "/api/documents/d1/text-boxes")).toHaveLength(0);
+  });
+
+  it("edits, moves and deletes typed text", async () => {
+    const { fetchSpy } = renderDocument("/documents/d1", [], drawingApi([], [answered]));
+    await pickTool("Text");
+    const layer = await drawingLayer();
+
+    drag(await screen.findByText("kuća"), layer, [[310, 210]]);
+    const input = await screen.findByRole("textbox", { name: "Text on the page" });
+    expect(input).toHaveValue("kuća");
+    await userEvent.clear(input);
+    await userEvent.type(input, "kuće{Enter}");
+    expect(await screen.findByText("kuće")).toBeInTheDocument();
+
+    // 60px right and 80px down on a 600×800 page.
+    drag(screen.getByText("kuće"), layer, [
+      [310, 210],
+      [340, 250],
+      [370, 290],
+    ]);
+
+    drag(screen.getByText("kuće"), layer, [[370, 290]]);
+    await userEvent.clear(await screen.findByRole("textbox", { name: "Text on the page" }));
+    await userEvent.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(calls(fetchSpy, "DELETE", "/api/text-boxes/t1")).toHaveLength(1);
+    });
+    expect(sent(fetchSpy, "PUT", "/api/text-boxes/t1")).toEqual([
+      { x: 0.5, y: 0.25, text: "kuće", color: "blue" },
+      { x: 0.6, y: 0.35, text: "kuće", color: "blue" },
+    ]);
+    expect(screen.queryByText("kuće")).not.toBeInTheDocument();
+  });
+
+  it("undoes with Ctrl+Z", async () => {
+    const { fetchSpy } = renderDocument("/documents/d1", [], drawingApi());
+    await pickTool("Pen");
+    const layer = await drawingLayer();
+    drag(layer, layer, [
+      [60, 80],
+      [120, 80],
+    ]);
+    expect(layer.querySelectorAll("path[data-stroke]")).toHaveLength(1);
+
+    await userEvent.keyboard("{Control>}z{/Control}");
+
+    expect(layer.querySelectorAll("path[data-stroke]")).toHaveLength(0);
+    // The stroke is saved before it is erased, so the API is never asked to erase an unknown one.
+    await waitFor(() => {
+      expect(calls(fetchSpy, "DELETE", "/api/strokes/stroke-1")).toHaveLength(1);
+    });
+    expect(calls(fetchSpy, "POST", "/api/documents/d1/strokes")).toHaveLength(1);
+  });
+
+  it("shows what was saved when a change cannot be saved", async () => {
+    const { fetchSpy } = renderDocument("/documents/d1", [], {
+      ...drawingApi(),
+      "POST /api/documents/d1/strokes": {
+        status: 500,
+        body: { error: { code: "internal_error", message: "Something went wrong on our side. Try again." } },
+      },
+    });
+    await pickTool("Pen");
+    const layer = await drawingLayer();
+    drag(layer, layer, [
+      [60, 80],
+      [120, 80],
+    ]);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Your last change was not saved. Something went wrong on our side. Try again.",
+    );
+    await waitFor(() => {
+      expect(layer.querySelectorAll("path[data-stroke]")).toHaveLength(0);
+    });
+    expect(calls(fetchSpy, "GET", "/api/documents/d1/strokes")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
   });
 });

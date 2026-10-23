@@ -33,6 +33,8 @@ light and dark with a Light/Dark/System switch), Sveska logo and favicon, UI pri
 
 - Highlights and notes on PDF pages; vocabulary capture from a selection.
   Decided: highlights on selected text with an optional note.
+- Writing and drawing on pages for exercises: a pen for circling, text
+  typed where the student clicks for filling in, an eraser and undo.
 - Vocabulary list with search and editing (built ahead of phase 2). Words
   saved from a PDF link back to their page.
 

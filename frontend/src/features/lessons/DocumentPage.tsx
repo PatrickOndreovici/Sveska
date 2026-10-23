@@ -12,13 +12,16 @@ import {
 } from "../../lib/api/annotations";
 import { ApiError, errorMessage } from "../../lib/api/client";
 import { documentFileUrl, getDocument } from "../../lib/api/lessons";
-import type { Annotation, DocumentDetail } from "../../lib/api/types";
+import type { Annotation, DocumentDetail, InkColor } from "../../lib/api/types";
 import { createVocabularyEntry } from "../../lib/api/vocabulary";
 import { clearSelection } from "../../lib/pdf/selection";
 import type { EntryFields } from "../vocabulary/entryFields";
 import { AnnotationPanel } from "./AnnotationPanel";
+import { DrawingLayer, type Tool } from "./DrawingLayer";
+import { DrawingTools } from "./DrawingTools";
 import { PdfViewer, type TextSelection } from "./PdfViewer";
 import { SaveWordDialog } from "./SaveWordDialog";
+import { useDrawings } from "./useDrawings";
 
 /** The API's limit on rectangles per highlight. */
 const MAX_RECTS = 200;
@@ -34,10 +37,19 @@ function pageFrom(params: URLSearchParams): number {
   return Number.isInteger(n) && n >= 1 ? n : 1;
 }
 
+/** Ctrl+Z or ⌘Z, except while typing, where it undoes the typing instead. */
+function isUndoShortcut(event: KeyboardEvent): boolean {
+  const typing =
+    event.target instanceof HTMLElement &&
+    (event.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName));
+  return (event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z" && !typing;
+}
+
 /**
  * Reading one PDF: the viewer, and beside it the highlights and notes made
- * on it. Selected text can be highlighted, given a note, or saved as a word.
- * The page is kept in the URL, so links can open a given page.
+ * on it. Selected text can be highlighted, given a note, or saved as a word;
+ * with the other tools the student writes and draws on the page, as on a
+ * worksheet. The page is kept in the URL, so links can open a given page.
  */
 export function DocumentPage() {
   const { documentId = "" } = useParams();
@@ -57,6 +69,22 @@ export function DocumentPage() {
   // The highlight made for the word being saved, so a retry after a refused
   // word (a duplicate, say) does not highlight the same text twice.
   const wordHighlight = useRef<Annotation | null>(null);
+  const drawings = useDrawings(documentId);
+  const { undo } = drawings;
+  const [tool, setTool] = useState<Tool>("select");
+  const [color, setColor] = useState<InkColor>("black");
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!isUndoShortcut(event)) return;
+      event.preventDefault();
+      undo();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [undo]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -241,6 +269,55 @@ export function DocumentPage() {
           }))}
           activeHighlightId={activeId}
           onHighlightClick={setActiveId}
+          selectable={tool === "select"}
+          tools={
+            <div className="grid gap-2">
+              <DrawingTools
+                tool={tool}
+                onToolChange={(next) => {
+                  if (next !== "select") clearSelection();
+                  setTool(next);
+                }}
+                color={color}
+                onColorChange={setColor}
+                canUndo={drawings.canUndo}
+                onUndo={undo}
+                drawingReady={drawings.strokes !== null && drawings.textBoxes !== null}
+              />
+              {drawings.loadError && (
+                <div role="alert" className="flex flex-wrap items-center gap-3">
+                  <p className="text-sm text-danger">{drawings.loadError}</p>
+                  <Button variant="secondary" size="sm" onClick={drawings.reload}>
+                    Try again
+                  </Button>
+                </div>
+              )}
+              {drawings.saveError && (
+                <p role="alert" className="text-sm text-danger">
+                  {drawings.saveError}
+                </p>
+              )}
+            </div>
+          }
+          overlay={({ pageNumber, scale }) => (
+            <DrawingLayer
+              // A new page starts with nothing being drawn or typed.
+              key={pageNumber}
+              scale={scale}
+              tool={tool}
+              color={color}
+              strokes={(drawings.strokes ?? []).filter((s) => s.pageNumber === pageNumber)}
+              textBoxes={(drawings.textBoxes ?? []).filter((b) => b.pageNumber === pageNumber)}
+              onDraw={(points) => {
+                drawings.draw(pageNumber, color, points);
+              }}
+              onErase={drawings.erase}
+              onAddText={(fields) => {
+                drawings.addTextBox(pageNumber, fields);
+              }}
+              onChangeText={drawings.updateTextBox}
+            />
+          )}
           selectionActions={(selection, dismiss) =>
             selection.quote.length > MAX_QUOTE_LENGTH || selection.rects.length > MAX_RECTS ? (
               <p className="px-2 py-1 text-sm text-ink-muted">Select a shorter passage to highlight it.</p>
