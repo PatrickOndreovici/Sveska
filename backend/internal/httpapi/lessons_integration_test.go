@@ -26,6 +26,12 @@ const samplePDF = "%PDF-1.7\n% Sveska integration test\n"
 // uploadFile posts content as the "file" part of a multipart form.
 func (b *browser) uploadFile(path, filename, content string) (*http.Response, map[string]any) {
 	b.t.Helper()
+	return b.sendFile(http.MethodPost, path, filename, content)
+}
+
+// sendFile sends content as the "file" part of a multipart form.
+func (b *browser) sendFile(method, path, filename, content string) (*http.Response, map[string]any) {
+	b.t.Helper()
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 	w, err := mw.CreateFormFile("file", filename)
@@ -35,7 +41,7 @@ func (b *browser) uploadFile(path, filename, content string) (*http.Response, ma
 	_, _ = io.WriteString(w, content)
 	_ = mw.Close()
 
-	req, err := http.NewRequest(http.MethodPost, b.base+path, &buf)
+	req, err := http.NewRequest(method, b.base+path, &buf)
 	if err != nil {
 		b.t.Fatal(err)
 	}

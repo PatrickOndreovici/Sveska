@@ -129,6 +129,13 @@ Rules:
   `students_only`. The frontend's `RequireRole` route guard mirrors it.
 - **Headers.** Every API response sets `nosniff`, `DENY` framing, a
   `default-src 'none'` CSP, `no-referrer` and `no-store`.
+- **Profile.** `PUT /api/me` changes the display name; email and role are
+  fixed. A profile picture is uploaded to `/api/me/avatar` and turned into
+  the largest centred square, upright as the photo's EXIF orientation says,
+  at most 256×256, re-encoded as JPEG (which drops other metadata, such as
+  the place a photo was taken). The user's `avatarUrl` carries the picture's
+  version, so the browser may keep it for good. These endpoints act on the
+  logged-in user only (`identity.ProfileService`).
 - **Not yet built.** Rate limiting on log-in and sign-up, password reset,
   email verification and "log out everywhere" (phase 7 or when needed).
 

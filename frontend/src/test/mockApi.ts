@@ -38,6 +38,7 @@ export const student = {
   email: "ana@example.com",
   displayName: "Ana Petrović",
   role: "student",
+  avatarUrl: null,
   createdAt: "2026-10-19T12:00:00Z",
 } as const;
 
@@ -46,6 +47,7 @@ export const teacher = {
   email: "marko@example.com",
   displayName: "Marko Jovanović",
   role: "teacher",
+  avatarUrl: null,
   createdAt: "2026-10-19T12:00:00Z",
 } as const;
 
@@ -53,3 +55,4 @@ export const anonymousMe: MockResponse = {
   status: 401,
   body: { error: { code: "unauthenticated", message: "Log in to continue." } },
 };
+

@@ -88,9 +88,49 @@ export interface paths {
         };
         /** Return the logged-in user. */
         get: operations["getMe"];
-        put?: never;
+        /**
+         * Change the logged-in user's display name.
+         * @description The name is trimmed and follows the sign-up rules: 1 to 80
+         *     characters, no line breaks or control characters. Email and role
+         *     cannot be changed.
+         */
+        put: operations["updateMe"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the logged-in user's profile picture.
+         * @description A JPEG of at most 256×256 pixels. Request it by the user's
+         *     `avatarUrl`, which carries the picture's version: the response may
+         *     be kept by the browser for good, since a new picture has a new URL.
+         */
+        get: operations["getAvatar"];
+        /**
+         * Set the logged-in user's profile picture.
+         * @description Accepts a JPEG, PNG, GIF or WebP of at most 10 MB and 50 megapixels.
+         *     The picture stored is its largest centred square, turned upright as
+         *     a phone photo's EXIF orientation says, scaled to at most 256×256 and
+         *     re-encoded as a JPEG, which drops the file's other metadata. It
+         *     replaces any earlier picture.
+         */
+        put: operations["uploadAvatar"];
+        post?: never;
+        /**
+         * Remove the logged-in user's profile picture.
+         * @description Succeeds also when there is no picture.
+         */
+        delete: operations["deleteAvatar"];
         options?: never;
         head?: never;
         patch?: never;
@@ -409,8 +449,17 @@ export interface components {
             email: string;
             displayName: string;
             role: components["schemas"]["Role"];
+            /**
+             * @description Where the profile picture is, with its version in the query, or
+             *     null without one.
+             * @example /api/me/avatar?v=1792747800123
+             */
+            avatarUrl: string | null;
             /** Format: date-time */
             createdAt: string;
+        };
+        ProfileInput: {
+            displayName: string;
         };
         UserEnvelope: {
             user: components["schemas"]["User"];
@@ -1013,6 +1062,129 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+        };
+    };
+    updateMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileInput"];
+            };
+        };
+        responses: {
+            /** @description The user with the new name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    getAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The picture. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description The user has no picture (code `avatar_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    uploadAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description The picture. Other form fields are ignored.
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The user with the new picture's `avatarUrl`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            /**
+             * @description Not multipart (`unsupported_content_type`), unreadable
+             *     (`invalid_multipart`), or `validation_failed` with a `file`
+             *     problem: missing, not a picture in a supported format, over
+             *     10 MB or over 50 megapixels.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The picture is gone. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
         };
     };
     listVocabulary: {

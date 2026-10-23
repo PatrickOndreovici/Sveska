@@ -12,6 +12,7 @@ Every dependency must earn its place. Exact versions are pinned in `go.mod` and
 | `github.com/go-chi/chi/v5` | Required router. Small, stdlib-compatible `http.Handler`, route groups, middleware (request ID, recoverer). |
 | `github.com/jackc/pgx/v5` | Required PostgreSQL driver and pool; sqlc targets it directly. |
 | `golang.org/x/crypto` | argon2id password hashing (Go team's extended standard library). |
+| `golang.org/x/image` | Profile pictures: a good-quality scaler (`draw.CatmullRom`) and a WebP decoder, neither of which the standard library has (Go team's extended standard library). |
 
 ### Frontend runtime
 

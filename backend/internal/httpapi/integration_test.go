@@ -51,6 +51,7 @@ func newStackWithFiles(t *testing.T) (*httptest.Server, *pgxpool.Pool, string) {
 	h := NewRouter(Dependencies{
 		DB:           pool,
 		Auth:         identity.NewService(queries, time.Hour),
+		Profile:      identity.NewProfileService(queries),
 		Vocabulary:   learning.NewVocabularyService(queries),
 		Lessons:      learning.NewLessonService(queries, files),
 		Annotations:  learning.NewAnnotationService(queries),

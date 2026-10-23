@@ -26,3 +26,10 @@ sql:
             go_type:
               import: time
               type: Time
+          # A nullable one (when a user has no picture) is a *time.Time, nil for NULL.
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true

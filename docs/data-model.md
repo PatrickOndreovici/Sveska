@@ -15,6 +15,7 @@ PostgreSQL enum types.
 |---|---|---|
 | `users` | id, email `citext` unique, password_hash, display_name, role `user_role` (student, teacher), created_at, updated_at | **Migrated.** Roles are exclusive and fixed at sign-up. Length checks on email and display_name. |
 | `sessions` | id, user_id → users (cascade), token_hash `bytea` unique, created_at, expires_at | **Migrated.** Only the SHA-256 of the token is stored. Indexed on user_id. |
+| `user_avatars` | user_id → users (cascade) primary key, image `bytea`, updated_at | **Migrated.** The profile picture, re-encoded by the API as a JPEG of at most 256×256 (a few dozen KB), so it is kept in the database rather than file storage; a CHECK caps it at 1 MB. `updated_at` versions the picture's URL. |
 
 ## Student workspace (owned by a student)
 

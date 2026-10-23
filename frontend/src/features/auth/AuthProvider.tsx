@@ -11,6 +11,8 @@ export type AuthContextValue = AuthState & {
   signUp: (input: SignUpRequest) => Promise<void>;
   logIn: (input: LogInRequest) => Promise<void>;
   logOut: () => Promise<void>;
+  /** Shows a change the API has saved, such as a new name or picture. */
+  updateUser: (user: User) => void;
 };
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -55,6 +57,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState(anonymous);
   }, []);
 
-  const value = useMemo(() => ({ ...state, signUp, logIn, logOut }), [state, signUp, logIn, logOut]);
+  const updateUser = useCallback((user: User) => {
+    setState({ status: "authenticated", user });
+  }, []);
+
+  const value = useMemo(
+    () => ({ ...state, signUp, logIn, logOut, updateUser }),
+    [state, signUp, logIn, logOut, updateUser],
+  );
   return <AuthContext value={value}>{children}</AuthContext>;
 }

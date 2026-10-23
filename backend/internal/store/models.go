@@ -298,6 +298,12 @@ type User struct {
 	UpdatedAt    time.Time
 }
 
+type UserAvatar struct {
+	UserID    string
+	Image     []byte
+	UpdatedAt time.Time
+}
+
 type VocabularyEntry struct {
 	ID                 string
 	OwnerID            string

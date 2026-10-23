@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -11,20 +12,32 @@ import (
 const sessionCookieName = "sveska_session"
 
 type userResponse struct {
-	ID          string    `json:"id"`
-	Email       string    `json:"email"`
-	DisplayName string    `json:"displayName"`
-	Role        string    `json:"role"`
-	CreatedAt   time.Time `json:"createdAt"`
+	ID          string `json:"id"`
+	Email       string `json:"email"`
+	DisplayName string `json:"displayName"`
+	Role        string `json:"role"`
+	// AvatarURL is null without a profile picture.
+	AvatarURL *string   `json:"avatarUrl"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type userEnvelope struct {
 	User userResponse `json:"user"`
 }
 
+// toUserEnvelope describes the logged-in user, who is the only one this
+// API returns, so their picture is at /api/me/avatar. The URL carries the
+// picture's version, so a browser may keep it and a new picture gets a
+// new URL.
 func toUserEnvelope(u identity.User) userEnvelope {
+	var avatarURL *string
+	if u.AvatarUpdatedAt != nil {
+		url := fmt.Sprintf("/api/me/avatar?v=%d", u.AvatarUpdatedAt.UnixMilli())
+		avatarURL = &url
+	}
 	return userEnvelope{User: userResponse{
-		ID: u.ID, Email: u.Email, DisplayName: u.DisplayName, Role: string(u.Role), CreatedAt: u.CreatedAt.UTC(),
+		ID: u.ID, Email: u.Email, DisplayName: u.DisplayName, Role: string(u.Role), AvatarURL: avatarURL,
+		CreatedAt: u.CreatedAt.UTC(),
 	}}
 }
 

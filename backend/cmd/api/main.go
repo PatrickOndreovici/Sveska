@@ -53,6 +53,7 @@ func run() error {
 		Handler: httpapi.NewRouter(httpapi.Dependencies{
 			DB:           pool,
 			Auth:         identity.NewService(queries, cfg.SessionTTL),
+			Profile:      identity.NewProfileService(queries),
 			Vocabulary:   learning.NewVocabularyService(queries),
 			Lessons:      learning.NewLessonService(queries, files),
 			Annotations:  learning.NewAnnotationService(queries),

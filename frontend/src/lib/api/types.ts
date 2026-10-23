@@ -39,3 +39,4 @@ export type TextBoxInput = Schemas["TextBoxInput"];
 export type NewTextBoxInput = Schemas["NewTextBoxInput"];
 export type TextBoxEnvelope = Schemas["TextBoxEnvelope"];
 export type TextBoxList = Schemas["TextBoxList"];
+export type ProfileInput = Schemas["ProfileInput"];

@@ -26,7 +26,9 @@ describe("SiteHeader menu", () => {
     const panel = menuPanel();
     expect(panel.getByRole("link", { name: "My workspace" })).toHaveAttribute("aria-current", "page");
     expect(panel.getByText("Ana Petrović")).toBeInTheDocument();
+    expect(panel.getByText("AP")).toBeInTheDocument();
     expect(panel.getByText("Student")).toBeInTheDocument();
+    expect(panel.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings");
     expect(panel.getByRole("group", { name: "Color theme" })).toBeInTheDocument();
     expect(panel.getByRole("button", { name: "Log out" })).toBeInTheDocument();
   });
@@ -61,6 +63,17 @@ describe("SiteHeader menu", () => {
 
     expect(await screen.findByRole("heading", { level: 1, name: "Log in" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Menu" })).not.toBeInTheDocument();
+  });
+
+  it("shows the profile picture beside the name", async () => {
+    const avatarUrl = "/api/me/avatar?v=1";
+    mockApi({ "GET /api/me": { status: 200, body: { user: { ...student, avatarUrl } } } });
+    renderApp("/");
+    await userEvent.click(await screen.findByRole("button", { name: "Menu" }));
+
+    const picture = menuPanel().getByRole("presentation");
+    expect(picture).toHaveAttribute("src", avatarUrl);
+    expect(menuPanel().queryByText("AP")).not.toBeInTheDocument();
   });
 
   it("has no menu for visitors who are not logged in", async () => {

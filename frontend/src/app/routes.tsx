@@ -5,6 +5,7 @@ import { LessonPage } from "../features/lessons/LessonPage";
 import { LessonsPage } from "../features/lessons/LessonsPage";
 import { GuestOnly, RequireAuth, RequireRole } from "../features/auth/routeGuards";
 import { SignUpPage } from "../features/auth/SignUpPage";
+import { SettingsPage } from "../features/settings/SettingsPage";
 import { VocabularyPage } from "../features/vocabulary/VocabularyPage";
 import { HomePage } from "../pages/HomePage";
 import { NotFoundPage } from "../pages/NotFoundPage";
@@ -18,6 +19,7 @@ export const routes: RouteObject[] = [
         element: <RequireAuth />,
         children: [
           { index: true, element: <HomePage /> },
+          { path: "settings", element: <SettingsPage /> },
           {
             // A student's own study material; teachers will use classes and assignments.
             element: <RequireRole role="student" />,

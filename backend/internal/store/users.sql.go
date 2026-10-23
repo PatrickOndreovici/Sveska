@@ -50,18 +50,20 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 }
 
 const getUserCredentialsByEmail = `-- name: GetUserCredentialsByEmail :one
-SELECT id, email, password_hash, display_name, role, created_at
-FROM users
-WHERE email = $1
+SELECT u.id, u.email, u.password_hash, u.display_name, u.role, u.created_at, a.updated_at AS avatar_updated_at
+FROM users u
+LEFT JOIN user_avatars a ON a.user_id = u.id
+WHERE u.email = $1
 `
 
 type GetUserCredentialsByEmailRow struct {
-	ID           string
-	Email        string
-	PasswordHash string
-	DisplayName  string
-	Role         UserRole
-	CreatedAt    time.Time
+	ID              string
+	Email           string
+	PasswordHash    string
+	DisplayName     string
+	Role            UserRole
+	CreatedAt       time.Time
+	AvatarUpdatedAt *time.Time
 }
 
 func (q *Queries) GetUserCredentialsByEmail(ctx context.Context, email string) (GetUserCredentialsByEmailRow, error) {
@@ -74,6 +76,49 @@ func (q *Queries) GetUserCredentialsByEmail(ctx context.Context, email string) (
 		&i.DisplayName,
 		&i.Role,
 		&i.CreatedAt,
+		&i.AvatarUpdatedAt,
+	)
+	return i, err
+}
+
+const updateDisplayName = `-- name: UpdateDisplayName :one
+WITH updated AS (
+    UPDATE users
+    SET display_name = $1,
+        updated_at   = now()
+    WHERE id = $2
+    RETURNING id, email, display_name, role, created_at
+)
+SELECT u.id, u.email, u.display_name, u.role, u.created_at, a.updated_at AS avatar_updated_at
+FROM updated u
+LEFT JOIN user_avatars a ON a.user_id = u.id
+`
+
+type UpdateDisplayNameParams struct {
+	DisplayName string
+	ID          string
+}
+
+type UpdateDisplayNameRow struct {
+	ID              string
+	Email           string
+	DisplayName     string
+	Role            UserRole
+	CreatedAt       time.Time
+	AvatarUpdatedAt *time.Time
+}
+
+// Returns the user as GetSessionUser does, picture included.
+func (q *Queries) UpdateDisplayName(ctx context.Context, arg UpdateDisplayNameParams) (UpdateDisplayNameRow, error) {
+	row := q.db.QueryRow(ctx, updateDisplayName, arg.DisplayName, arg.ID)
+	var i UpdateDisplayNameRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.DisplayName,
+		&i.Role,
+		&i.CreatedAt,
+		&i.AvatarUpdatedAt,
 	)
 	return i, err
 }

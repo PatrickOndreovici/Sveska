@@ -157,9 +157,9 @@ const maxMultipartOverhead = 64 << 10
 
 func (a *api) uploadDocument(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, learning.MaxDocumentBytes+maxMultipartOverhead)
-	part, err := filePart(r)
+	part, err := filePart(r, "Choose a PDF to upload.")
 	if err != nil {
-		writeServiceError(w, r, uploadError(err))
+		writeServiceError(w, r, uploadError(err, learning.ErrDocumentTooLarge))
 		return
 	}
 	defer part.Close()
@@ -170,7 +170,7 @@ func (a *api) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		Body:     part,
 	})
 	if err != nil {
-		writeServiceError(w, r, uploadError(err))
+		writeServiceError(w, r, uploadError(err, learning.ErrDocumentTooLarge))
 		return
 	}
 	writeJSON(w, http.StatusCreated, documentEnvelope{Document: toDocumentResponse(doc)})
@@ -178,8 +178,8 @@ func (a *api) uploadDocument(w http.ResponseWriter, r *http.Request) {
 
 // filePart returns the part named "file" of a multipart/form-data body,
 // streaming: the file is read by the service, not buffered here. Other
-// parts are skipped.
-func filePart(r *http.Request) (*multipart.Part, error) {
+// parts are skipped. missing is the problem reported when there is no file.
+func filePart(r *http.Request, missing string) (*multipart.Part, error) {
 	mr, err := r.MultipartReader()
 	if err != nil {
 		return nil, apperr.New(apperr.Invalid, "unsupported_content_type", "Send the file as multipart/form-data.")
@@ -187,7 +187,7 @@ func filePart(r *http.Request) (*multipart.Part, error) {
 	for {
 		part, err := mr.NextPart()
 		if errors.Is(err, io.EOF) {
-			return nil, apperr.Validation(map[string]string{"file": "Choose a PDF to upload."})
+			return nil, apperr.Validation(map[string]string{"file": missing})
 		}
 		if err != nil {
 			return nil, err
@@ -199,11 +199,12 @@ func filePart(r *http.Request) (*multipart.Part, error) {
 }
 
 // uploadError gives a body over the request limit the same answer as a
-// file over the service's limit, and any other unreadable body a 422.
-func uploadError(err error) error {
-	var tooLarge *http.MaxBytesError
-	if errors.As(err, &tooLarge) {
-		return learning.ErrDocumentTooLarge
+// file over the service's limit (tooLarge), and any other unreadable body
+// a 422.
+func uploadError(err error, tooLarge error) error {
+	var overLimit *http.MaxBytesError
+	if errors.As(err, &overLimit) {
+		return tooLarge
 	}
 	var appErr *apperr.Error
 	if !errors.As(err, &appErr) && isMultipartError(err) {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router";
+import { Avatar } from "../components/Avatar";
 import { LogoMark } from "../components/Logo";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { Button } from "../components/ui/Button";
@@ -56,6 +57,7 @@ export function SiteHeader({ user, onLogOut }: SiteHeaderProps) {
           <>
             <div className="hidden items-center gap-4 md:flex">
               <AccountSummary user={user} />
+              <SettingsLink />
               <Button variant="quiet" size="sm" onClick={onLogOut}>
                 Log out
               </Button>
@@ -93,7 +95,14 @@ export function SiteHeader({ user, onLogOut }: SiteHeaderProps) {
               />
             </nav>
             <hr className="border-rule" />
-            <AccountSummary user={user} />
+            <div className="flex items-center justify-between gap-4">
+              <AccountSummary user={user} />
+              <SettingsLink
+                onNavigate={() => {
+                  setOpenAt(null);
+                }}
+              />
+            </div>
             <div className="flex items-center justify-between gap-4">
               <ThemeToggle />
               <Button variant="secondary" size="sm" onClick={onLogOut}>
@@ -134,11 +143,29 @@ function NavItems({ user, large = false, onNavigate }: { user: User; large?: boo
 function AccountSummary({ user }: { user: User }) {
   return (
     <p className="flex min-w-0 items-center gap-2 text-sm text-ink-muted">
+      <Avatar user={user} />
       <span className="truncate text-ink">{user.displayName}</span>
       <span className="shrink-0 rounded-sm bg-paper-sunken px-1.5 py-0.5 text-xs font-medium text-ink-muted">
         {roleLabels[user.role]}
       </span>
     </p>
+  );
+}
+
+function SettingsLink({ onNavigate }: { onNavigate?: () => void }) {
+  return (
+    <NavLink
+      to="/settings"
+      onClick={onNavigate}
+      className={({ isActive }) =>
+        cx(
+          "shrink-0 text-sm underline-offset-4 hover:text-ink hover:underline",
+          isActive ? "font-medium text-ink" : "text-ink-muted",
+        )
+      }
+    >
+      Settings
+    </NavLink>
   );
 }
 
