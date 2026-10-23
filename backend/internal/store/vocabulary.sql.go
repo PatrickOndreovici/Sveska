@@ -285,7 +285,7 @@ type UpdateVocabularyEntryParams struct {
 	OwnerID      string
 }
 
-// Replaces all editable fields; the service merges a partial update first.
+// Replaces all editable fields; the edit form always sends the full set.
 func (q *Queries) UpdateVocabularyEntry(ctx context.Context, arg UpdateVocabularyEntryParams) (VocabularyEntry, error) {
 	row := q.db.QueryRow(ctx, updateVocabularyEntry,
 		arg.Term,

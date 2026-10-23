@@ -70,7 +70,7 @@ WHERE id = @id
   AND owner_id = @owner_id;
 
 -- name: UpdateVocabularyEntry :one
--- Replaces all editable fields; the service merges a partial update first.
+-- Replaces all editable fields; the edit form always sends the full set.
 UPDATE vocabulary_entries
 SET term           = @term,
     translation    = @translation,
