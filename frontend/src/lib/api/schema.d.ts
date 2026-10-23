@@ -470,6 +470,30 @@ export interface components {
             };
         };
         /**
+         * @description The caller is logged in but is not a student (code `students_only`).
+         *     Lessons, documents and vocabulary are a student's own material.
+         */
+        StudentsOnly: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description The caller is not a student (code `students_only`), or the request
+         *     came from a foreign Origin (code `forbidden_origin`).
+         */
+        StudentsOnlyOrForbiddenOrigin: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
          * @description No such lesson among the user's own (code `lesson_not_found`).
          *     Another user's lesson and a malformed id get the same answer.
          */
@@ -706,6 +730,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
             422: components["responses"]["Invalid"];
         };
     };
@@ -732,7 +757,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["ForbiddenOrigin"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
             409: components["responses"]["DuplicateEntry"];
             422: components["responses"]["Invalid"];
         };
@@ -762,7 +787,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["ForbiddenOrigin"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
             404: components["responses"]["EntryNotFound"];
             409: components["responses"]["DuplicateEntry"];
             422: components["responses"]["Invalid"];
@@ -787,7 +812,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["ForbiddenOrigin"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
             404: components["responses"]["EntryNotFound"];
         };
     };
@@ -810,6 +835,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
         };
     };
     createLesson: {
@@ -835,7 +861,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["ForbiddenOrigin"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
             422: components["responses"]["Invalid"];
         };
     };
@@ -860,6 +886,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
             404: components["responses"]["LessonNotFound"];
         };
     };
@@ -888,7 +915,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["ForbiddenOrigin"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
             404: components["responses"]["LessonNotFound"];
             422: components["responses"]["Invalid"];
         };
@@ -912,7 +939,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["ForbiddenOrigin"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
             404: components["responses"]["LessonNotFound"];
         };
     };
@@ -947,7 +974,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["ForbiddenOrigin"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
             404: components["responses"]["LessonNotFound"];
             /**
              * @description Not multipart (`unsupported_content_type`), unreadable
@@ -985,6 +1012,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
             404: components["responses"]["DocumentNotFound"];
         };
     };
@@ -1007,7 +1035,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["ForbiddenOrigin"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
             404: components["responses"]["DocumentNotFound"];
         };
     };
@@ -1043,6 +1071,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
             404: components["responses"]["DocumentNotFound"];
         };
     };

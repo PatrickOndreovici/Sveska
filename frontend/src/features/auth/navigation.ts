@@ -6,9 +6,9 @@ export interface NavItem {
 }
 
 /**
- * Main navigation per role. Only routes that exist are listed; each phase
- * adds its own entries (lessons and vocabulary for students, classes and
- * assignments for teachers).
+ * Main navigation per role. Only routes the role may open are listed; each
+ * phase adds its own entries (lessons and vocabulary for students, classes
+ * and assignments for teachers).
  */
 export const navigationByRole: Record<Role, readonly NavItem[]> = {
   student: [

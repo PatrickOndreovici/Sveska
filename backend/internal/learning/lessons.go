@@ -118,7 +118,7 @@ var (
 
 // CreateLesson adds a lesson for the current user.
 func (s *LessonService) CreateLesson(ctx context.Context, in LessonFields) (Lesson, error) {
-	actor, err := access.RequireActor(ctx)
+	actor, err := access.RequireStudent(ctx)
 	if err != nil {
 		return Lesson{}, err
 	}
@@ -137,7 +137,7 @@ func (s *LessonService) CreateLesson(ctx context.Context, in LessonFields) (Less
 
 // ListLessons returns the current user's lessons, newest first.
 func (s *LessonService) ListLessons(ctx context.Context) ([]Lesson, error) {
-	actor, err := access.RequireActor(ctx)
+	actor, err := access.RequireStudent(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +159,7 @@ func (s *LessonService) ListLessons(ctx context.Context) ([]Lesson, error) {
 // GetLesson returns one of the current user's lessons with its PDFs in
 // upload order.
 func (s *LessonService) GetLesson(ctx context.Context, id string) (Lesson, []Document, error) {
-	actor, err := access.RequireActor(ctx)
+	actor, err := access.RequireStudent(ctx)
 	if err != nil {
 		return Lesson{}, nil, err
 	}
@@ -187,7 +187,7 @@ func (s *LessonService) GetLesson(ctx context.Context, id string) (Lesson, []Doc
 // UpdateLesson replaces the title and description of one of the current
 // user's lessons.
 func (s *LessonService) UpdateLesson(ctx context.Context, id string, in LessonFields) (Lesson, error) {
-	actor, err := access.RequireActor(ctx)
+	actor, err := access.RequireStudent(ctx)
 	if err != nil {
 		return Lesson{}, err
 	}
@@ -218,7 +218,7 @@ func (s *LessonService) UpdateLesson(ctx context.Context, id string, in LessonFi
 // DeleteLesson removes one of the current user's lessons together with its
 // PDFs, rows and files.
 func (s *LessonService) DeleteLesson(ctx context.Context, id string) error {
-	actor, err := access.RequireActor(ctx)
+	actor, err := access.RequireStudent(ctx)
 	if err != nil {
 		return err
 	}
@@ -242,7 +242,7 @@ func (s *LessonService) DeleteLesson(ctx context.Context, id string) error {
 // bytes are checked and hashed while they stream to file storage, so the
 // upload is never held in memory.
 func (s *LessonService) UploadDocument(ctx context.Context, in UploadInput) (Document, error) {
-	actor, err := access.RequireActor(ctx)
+	actor, err := access.RequireStudent(ctx)
 	if err != nil {
 		return Document{}, err
 	}
@@ -321,7 +321,7 @@ func (s *LessonService) OpenDocument(ctx context.Context, id string) (Document, 
 
 // DeleteDocument removes one of the current user's documents, row and file.
 func (s *LessonService) DeleteDocument(ctx context.Context, id string) error {
-	actor, err := access.RequireActor(ctx)
+	actor, err := access.RequireStudent(ctx)
 	if err != nil {
 		return err
 	}
@@ -340,7 +340,7 @@ func (s *LessonService) DeleteDocument(ctx context.Context, id string) error {
 }
 
 func (s *LessonService) getDocumentRow(ctx context.Context, id string) (store.GetDocumentRow, error) {
-	actor, err := access.RequireActor(ctx)
+	actor, err := access.RequireStudent(ctx)
 	if err != nil {
 		return store.GetDocumentRow{}, err
 	}

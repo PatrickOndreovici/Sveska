@@ -268,3 +268,41 @@ func TestDocumentOwnerMustOwnTheLesson(t *testing.T) {
 		t.Error("insert succeeded, want documents_lesson_fkey to refuse it")
 	}
 }
+
+func TestTeachersCannotUseLessonsOrVocabulary(t *testing.T) {
+	srv, _, filesDir := newStackWithFiles(t)
+	marko := newBrowser(t, srv)
+	if resp, body := marko.send(http.MethodPost, "/api/auth/signup", signUpPayload("marko@example.com", "teacher")); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("signup = %d %v", resp.StatusCode, body)
+	}
+	ana := signedUp(t, newBrowser(t, srv), "ana@example.com")
+	lessonID := ana.createLesson("Ana's")
+
+	checks := []struct {
+		name string
+		do   func() (*http.Response, map[string]any)
+	}{
+		{"list lessons", func() (*http.Response, map[string]any) { return marko.send(http.MethodGet, "/api/lessons", nil) }},
+		{"create lesson", func() (*http.Response, map[string]any) {
+			return marko.send(http.MethodPost, "/api/lessons", map[string]string{"title": "x"})
+		}},
+		{"upload", func() (*http.Response, map[string]any) {
+			return marko.uploadFile("/api/lessons/"+lessonID+"/documents", "x.pdf", samplePDF)
+		}},
+		{"list vocabulary", func() (*http.Response, map[string]any) { return marko.send(http.MethodGet, "/api/vocabulary", nil) }},
+		{"add word", func() (*http.Response, map[string]any) {
+			return marko.send(http.MethodPost, "/api/vocabulary", map[string]string{"term": "kuća", "translation": "house"})
+		}},
+	}
+	for _, c := range checks {
+		t.Run(c.name, func(t *testing.T) {
+			resp, body := c.do()
+			if resp.StatusCode != http.StatusForbidden || errorCode(body) != "students_only" {
+				t.Errorf("= %d %v, want 403 students_only", resp.StatusCode, body)
+			}
+		})
+	}
+	if n := storedFiles(t, filesDir); n != 0 {
+		t.Errorf("%d files stored, want 0", n)
+	}
+}

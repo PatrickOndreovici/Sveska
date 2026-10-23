@@ -58,6 +58,9 @@ PostgreSQL enum types.
 
 - A student reads and writes only rows they own, plus documents and quizzes
   attached to published assignments in classes they belong to.
+- Lessons, documents and vocabulary are for students only, for now: a
+  teacher gets 403 `students_only`. Teachers will share material through
+  assignments instead.
 - A teacher manages classes they own, sees submissions for those classes, and
   grades them.
 - A teacher sees nothing else of a student's workspace unless the answer to the

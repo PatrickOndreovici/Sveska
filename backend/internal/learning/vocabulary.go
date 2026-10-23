@@ -132,7 +132,7 @@ var (
 
 // Create saves a new entry for the current user.
 func (s *VocabularyService) Create(ctx context.Context, in EntryFields) (VocabularyEntry, error) {
-	actor, err := access.RequireActor(ctx)
+	actor, err := access.RequireStudent(ctx)
 	if err != nil {
 		return VocabularyEntry{}, err
 	}
@@ -166,7 +166,7 @@ func (s *VocabularyService) Create(ctx context.Context, in EntryFields) (Vocabul
 
 // List returns one page of the current user's entries.
 func (s *VocabularyService) List(ctx context.Context, in ListEntriesInput) (EntryPage, error) {
-	actor, err := access.RequireActor(ctx)
+	actor, err := access.RequireStudent(ctx)
 	if err != nil {
 		return EntryPage{}, err
 	}
@@ -225,7 +225,7 @@ func (s *VocabularyService) List(ctx context.Context, in ListEntriesInput) (Entr
 
 // Update replaces every editable field of one of the current user's entries.
 func (s *VocabularyService) Update(ctx context.Context, id string, in EntryFields) (VocabularyEntry, error) {
-	actor, err := access.RequireActor(ctx)
+	actor, err := access.RequireStudent(ctx)
 	if err != nil {
 		return VocabularyEntry{}, err
 	}
@@ -266,7 +266,7 @@ func (s *VocabularyService) Update(ctx context.Context, id string, in EntryField
 
 // Delete removes one of the current user's entries.
 func (s *VocabularyService) Delete(ctx context.Context, id string) error {
-	actor, err := access.RequireActor(ctx)
+	actor, err := access.RequireStudent(ctx)
 	if err != nil {
 		return err
 	}

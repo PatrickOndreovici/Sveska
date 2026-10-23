@@ -19,11 +19,14 @@ tags:
   - name: auth
     description: Accounts and sessions.
   - name: vocabulary
-    description: A user's own list of words. Every entry is private to its owner.
+    description: |
+      A student's own list of words. Every entry is private to its owner;
+      teachers get 403 `students_only`.
   - name: lessons
     description: |
-      A user's lessons and the PDFs uploaded into them. Every lesson and
-      document is private to its owner; someone else's id answers 404.
+      A student's lessons and the PDFs uploaded into them. Every lesson and
+      document is private to its owner; someone else's id answers 404, and
+      teachers get 403 `students_only`.
 paths:
   /api/health:
     get:
@@ -193,6 +196,8 @@ paths:
                 $ref: "#/components/schemas/VocabularyPage"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
         "422":
           $ref: "#/components/responses/Invalid"
     post:
@@ -217,7 +222,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          $ref: "#/components/responses/ForbiddenOrigin"
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
         "409":
           $ref: "#/components/responses/DuplicateEntry"
         "422":
@@ -255,7 +260,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          $ref: "#/components/responses/ForbiddenOrigin"
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
         "404":
           $ref: "#/components/responses/EntryNotFound"
         "409":
@@ -274,7 +279,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          $ref: "#/components/responses/ForbiddenOrigin"
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
         "404":
           $ref: "#/components/responses/EntryNotFound"
   /api/lessons:
@@ -293,6 +298,8 @@ paths:
                 $ref: "#/components/schemas/LessonList"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
     post:
       tags: [lessons]
       operationId: createLesson
@@ -315,7 +322,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          $ref: "#/components/responses/ForbiddenOrigin"
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
         "422":
           $ref: "#/components/responses/Invalid"
   /api/lessons/{id}:
@@ -336,6 +343,8 @@ paths:
                 $ref: "#/components/schemas/LessonDetail"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
         "404":
           $ref: "#/components/responses/LessonNotFound"
     put:
@@ -360,7 +369,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          $ref: "#/components/responses/ForbiddenOrigin"
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
         "404":
           $ref: "#/components/responses/LessonNotFound"
         "422":
@@ -377,7 +386,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          $ref: "#/components/responses/ForbiddenOrigin"
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
         "404":
           $ref: "#/components/responses/LessonNotFound"
   /api/lessons/{id}/documents:
@@ -415,7 +424,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          $ref: "#/components/responses/ForbiddenOrigin"
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
         "404":
           $ref: "#/components/responses/LessonNotFound"
         "422":
@@ -445,6 +454,8 @@ paths:
                 $ref: "#/components/schemas/DocumentDetail"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
         "404":
           $ref: "#/components/responses/DocumentNotFound"
     delete:
@@ -459,7 +470,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          $ref: "#/components/responses/ForbiddenOrigin"
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
         "404":
           $ref: "#/components/responses/DocumentNotFound"
   /api/documents/{id}/file:
@@ -497,6 +508,8 @@ paths:
                 format: binary
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
         "404":
           $ref: "#/components/responses/DocumentNotFound"
 components:
@@ -548,6 +561,22 @@ components:
       description: |
         No such entry among the user's own (code `entry_not_found`). Another
         user's entry and a malformed id get the same answer.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    StudentsOnly:
+      description: |
+        The caller is logged in but is not a student (code `students_only`).
+        Lessons, documents and vocabulary are a student's own material.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    StudentsOnlyOrForbiddenOrigin:
+      description: |
+        The caller is not a student (code `students_only`), or the request
+        came from a foreign Origin (code `forbidden_origin`).
       content:
         application/json:
           schema:

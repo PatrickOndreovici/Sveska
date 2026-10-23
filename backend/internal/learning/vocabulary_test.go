@@ -127,7 +127,11 @@ const (
 )
 
 func actorCtx(userID string) context.Context {
-	return access.WithActor(context.Background(), access.Actor{User: identity.User{ID: userID}})
+	return access.WithActor(context.Background(), access.Actor{User: identity.User{ID: userID, Role: identity.RoleStudent}})
+}
+
+func teacherCtx() context.Context {
+	return access.WithActor(context.Background(), access.Actor{User: identity.User{ID: anaID, Role: identity.RoleTeacher}})
 }
 
 var kuca = EntryFields{
@@ -184,6 +188,25 @@ func TestCreateRequiresActor(t *testing.T) {
 	fs := newFakeStore()
 	_, err := NewVocabularyService(fs).Create(context.Background(), kuca)
 	requireAppErr(t, err, apperr.Unauthenticated, "unauthenticated")
+	if fs.storeCalls != 0 {
+		t.Errorf("store called %d times, want 0", fs.storeCalls)
+	}
+}
+
+func TestVocabularyIsForStudentsOnly(t *testing.T) {
+	fs := newFakeStore()
+	svc := NewVocabularyService(fs)
+	ctx := teacherCtx()
+	checks := map[string]error{}
+	_, checks["create"] = svc.Create(ctx, kuca)
+	_, checks["list"] = svc.List(ctx, ListEntriesInput{})
+	_, checks["update"] = svc.Update(ctx, missingID, kuca)
+	checks["delete"] = svc.Delete(ctx, missingID)
+	for name, err := range checks {
+		t.Run(name, func(t *testing.T) {
+			requireAppErr(t, err, apperr.Forbidden, "students_only")
+		})
+	}
 	if fs.storeCalls != 0 {
 		t.Errorf("store called %d times, want 0", fs.storeCalls)
 	}

@@ -124,7 +124,9 @@ Rules:
 - **Middleware.** `loadSession` turns a valid cookie into an `access.Actor` in
   the request context and clears stale cookies. `requireActor` guards every
   protected route with 401. Handlers and services read the actor through
-  `access.RequireActor`.
+  `access.RequireActor`, or `access.RequireStudent` for a student's own
+  material (lessons, documents, vocabulary), which answers a teacher with 403
+  `students_only`. The frontend's `RequireRole` route guard mirrors it.
 - **Headers.** Every API response sets `nosniff`, `DENY` framing, a
   `default-src 'none'` CSP, `no-referrer` and `no-store`.
 - **Not yet built.** Rate limiting on log-in and sign-up, password reset,

@@ -1,4 +1,5 @@
 import { Navigate, Outlet, useLocation } from "react-router";
+import type { Role } from "../../lib/api/types";
 import { useAuth } from "./useAuth";
 
 export interface RedirectState {
@@ -23,6 +24,18 @@ export function RequireAuth() {
     const state: RedirectState = { from: location.pathname + location.search };
     return <Navigate to="/login" replace state={state} />;
   }
+  return <Outlet />;
+}
+
+/**
+ * Renders child routes only for one role; anyone else goes to their own
+ * workspace. Nest it inside RequireAuth. The API enforces the same rule, so
+ * this only spares people a page that would fail to load.
+ */
+export function RequireRole({ role }: { role: Role }) {
+  const auth = useAuth();
+  if (auth.status === "loading") return <CheckingSession />;
+  if (auth.user?.role !== role) return <Navigate to="/" replace />;
   return <Outlet />;
 }
 

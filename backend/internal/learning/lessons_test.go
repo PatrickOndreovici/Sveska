@@ -248,26 +248,39 @@ func TestCreateLessonTrimsAndValidates(t *testing.T) {
 	}
 }
 
-func TestLessonsRequireActor(t *testing.T) {
-	svc, fs, files := newLessonTest()
-	ctx := context.Background()
-	checks := map[string]error{}
-	_, checks["create"] = svc.CreateLesson(ctx, LessonFields{Title: "x"})
-	_, checks["list"] = svc.ListLessons(ctx)
-	_, _, checks["get"] = svc.GetLesson(ctx, missingID)
-	_, checks["update"] = svc.UpdateLesson(ctx, missingID, LessonFields{Title: "x"})
-	checks["delete"] = svc.DeleteLesson(ctx, missingID)
-	_, checks["upload"] = svc.UploadDocument(ctx, UploadInput{LessonID: missingID, Body: strings.NewReader(pdfBody)})
-	_, checks["get document"] = svc.GetDocument(ctx, missingID)
-	_, _, checks["open document"] = svc.OpenDocument(ctx, missingID)
-	checks["delete document"] = svc.DeleteDocument(ctx, missingID)
-	for name, err := range checks {
-		t.Run(name, func(t *testing.T) {
-			requireAppErr(t, err, apperr.Unauthenticated, "unauthenticated")
-		})
+func TestLessonsRequireAStudent(t *testing.T) {
+	callers := []struct {
+		name string
+		ctx  context.Context
+		kind apperr.Kind
+		code string
+	}{
+		{"anonymous", context.Background(), apperr.Unauthenticated, "unauthenticated"},
+		{"teacher", teacherCtx(), apperr.Forbidden, "students_only"},
 	}
-	if fs.calls != 0 || files.puts != 0 {
-		t.Errorf("store called %d times, files %d times; want 0", fs.calls, files.puts)
+	for _, c := range callers {
+		t.Run(c.name, func(t *testing.T) {
+			svc, fs, files := newLessonTest()
+			ctx := c.ctx
+			checks := map[string]error{}
+			_, checks["create"] = svc.CreateLesson(ctx, LessonFields{Title: "x"})
+			_, checks["list"] = svc.ListLessons(ctx)
+			_, _, checks["get"] = svc.GetLesson(ctx, missingID)
+			_, checks["update"] = svc.UpdateLesson(ctx, missingID, LessonFields{Title: "x"})
+			checks["delete"] = svc.DeleteLesson(ctx, missingID)
+			_, checks["upload"] = svc.UploadDocument(ctx, UploadInput{LessonID: missingID, Body: strings.NewReader(pdfBody)})
+			_, checks["get document"] = svc.GetDocument(ctx, missingID)
+			_, _, checks["open document"] = svc.OpenDocument(ctx, missingID)
+			checks["delete document"] = svc.DeleteDocument(ctx, missingID)
+			for name, err := range checks {
+				t.Run(name, func(t *testing.T) {
+					requireAppErr(t, err, c.kind, c.code)
+				})
+			}
+			if fs.calls != 0 || files.puts != 0 {
+				t.Errorf("store called %d times, files %d times; want 0", fs.calls, files.puts)
+			}
+		})
 	}
 }
 
