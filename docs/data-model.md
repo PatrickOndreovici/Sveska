@@ -70,3 +70,11 @@ PostgreSQL enum types.
   open question on linked-teacher visibility says otherwise.
 - Annotations and vocabulary are always private to their owner, even on a
   teacher's document.
+
+## Dashboard
+
+The student's dashboard (`GET /api/dashboard`) is computed from these tables
+on each request; nothing is stored for it. Days are counted in the
+student's time zone with `AT TIME ZONE`. Indexes on (owner_id, created_at)
+for `vocabulary_entries`, `documents`, `annotations`, `ink_strokes` and
+`text_boxes` let it find one student's rows of recent weeks.

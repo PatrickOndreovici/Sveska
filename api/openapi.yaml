@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Sveska API
-  version: 0.7.0
+  version: 0.8.0
   description: |
     REST API for the language-learning workspace. This file is the contract:
     endpoints are added here first, then implemented in backend/internal/httpapi
@@ -22,6 +22,10 @@ tags:
     description: |
       How the logged-in user appears: their display name and profile
       picture. These endpoints act on the caller's own account only.
+  - name: dashboard
+    description: |
+      A student's overview: totals, what they did on each recent day and
+      where to pick up. Teachers get 403 `students_only`.
   - name: vocabulary
     description: |
       A student's own list of words. Every entry is private to its owner;
@@ -276,6 +280,40 @@ paths:
           $ref: "#/components/responses/Unauthenticated"
         "403":
           $ref: "#/components/responses/ForbiddenOrigin"
+  /api/dashboard:
+    get:
+      tags: [dashboard]
+      operationId: getDashboard
+      summary: Return the student's dashboard.
+      description: |
+        Days are counted in the given time zone, so a day starts at the
+        student's own midnight.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: timeZone
+          in: query
+          description: An IANA time zone name. Defaults to UTC.
+          schema:
+            type: string
+            example: Europe/Belgrade
+      responses:
+        "200":
+          description: The dashboard.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
+        "422":
+          description: "`validation_failed` with a `timeZone` problem: not a known time zone."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/vocabulary:
     get:
       tags: [vocabulary]
@@ -1373,6 +1411,129 @@ components:
               format: uuid
             title:
               type: string
+    Dashboard:
+      type: object
+      additionalProperties: false
+      required: [today, totals, streak, activity, recentWords, recentDocuments]
+      properties:
+        today:
+          type: string
+          format: date
+          description: Today's date in the requested time zone.
+        totals:
+          $ref: "#/components/schemas/DashboardTotals"
+        streak:
+          type: integer
+          minimum: 0
+          description: |
+            Days in a row with any activity, up to today. A streak that
+            reached yesterday still counts while nothing is done yet today.
+        activity:
+          type: array
+          description: |
+            One entry per day for the last 84 days (twelve weeks), oldest
+            first and today last, including days with nothing done.
+          items:
+            $ref: "#/components/schemas/ActivityDay"
+        recentWords:
+          type: array
+          description: The 5 newest words, newest first.
+          items:
+            $ref: "#/components/schemas/RecentWord"
+        recentDocuments:
+          type: array
+          description: |
+            The 3 PDFs most recently worked on (uploaded, highlighted, drawn
+            or written on), with the page of the last change.
+          items:
+            $ref: "#/components/schemas/RecentDocument"
+    DashboardTotals:
+      type: object
+      additionalProperties: false
+      required: [words, wordsThisWeek, lessons, documents, highlights, notes]
+      properties:
+        words:
+          type: integer
+          minimum: 0
+        wordsThisWeek:
+          type: integer
+          minimum: 0
+          description: Words added in the last 7 days, today included.
+        lessons:
+          type: integer
+          minimum: 0
+        documents:
+          type: integer
+          minimum: 0
+        highlights:
+          type: integer
+          minimum: 0
+        notes:
+          type: integer
+          minimum: 0
+          description: Highlights that have a note.
+    ActivityDay:
+      type: object
+      additionalProperties: false
+      required: [date, words, highlights, pages]
+      properties:
+        date:
+          type: string
+          format: date
+        words:
+          type: integer
+          minimum: 0
+          description: Words added.
+        highlights:
+          type: integer
+          minimum: 0
+          description: Highlights made.
+        pages:
+          type: integer
+          minimum: 0
+          description: PDF pages drawn or written on, each counted once.
+    RecentWord:
+      type: object
+      additionalProperties: false
+      required: [id, term, translation, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        term:
+          type: string
+        translation:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    RecentDocument:
+      type: object
+      additionalProperties: false
+      required: [id, title, lesson, pageNumber, workedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        lesson:
+          type: object
+          additionalProperties: false
+          required: [id, title]
+          properties:
+            id:
+              type: string
+              format: uuid
+            title:
+              type: string
+        pageNumber:
+          type: integer
+          minimum: 1
+          description: The page of the last change; 1 for a PDF only uploaded.
+        workedAt:
+          type: string
+          format: date-time
     EntrySource:
       type: object
       additionalProperties: false

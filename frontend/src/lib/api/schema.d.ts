@@ -136,6 +136,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the student's dashboard.
+         * @description Days are counted in the given time zone, so a day starts at the
+         *     student's own midnight.
+         */
+        get: operations["getDashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/vocabulary": {
         parameters: {
             query?: never;
@@ -613,6 +634,73 @@ export interface components {
                 id: string;
                 title: string;
             };
+        };
+        Dashboard: {
+            /**
+             * Format: date
+             * @description Today's date in the requested time zone.
+             */
+            today: string;
+            totals: components["schemas"]["DashboardTotals"];
+            /**
+             * @description Days in a row with any activity, up to today. A streak that
+             *     reached yesterday still counts while nothing is done yet today.
+             */
+            streak: number;
+            /**
+             * @description One entry per day for the last 84 days (twelve weeks), oldest
+             *     first and today last, including days with nothing done.
+             */
+            activity: components["schemas"]["ActivityDay"][];
+            /** @description The 5 newest words, newest first. */
+            recentWords: components["schemas"]["RecentWord"][];
+            /**
+             * @description The 3 PDFs most recently worked on (uploaded, highlighted, drawn
+             *     or written on), with the page of the last change.
+             */
+            recentDocuments: components["schemas"]["RecentDocument"][];
+        };
+        DashboardTotals: {
+            words: number;
+            /** @description Words added in the last 7 days, today included. */
+            wordsThisWeek: number;
+            lessons: number;
+            documents: number;
+            highlights: number;
+            /** @description Highlights that have a note. */
+            notes: number;
+        };
+        ActivityDay: {
+            /** Format: date */
+            date: string;
+            /** @description Words added. */
+            words: number;
+            /** @description Highlights made. */
+            highlights: number;
+            /** @description PDF pages drawn or written on, each counted once. */
+            pages: number;
+        };
+        RecentWord: {
+            /** Format: uuid */
+            id: string;
+            term: string;
+            translation: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        RecentDocument: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            lesson: {
+                /** Format: uuid */
+                id: string;
+                title: string;
+            };
+            /** @description The page of the last change; 1 for a PDF only uploaded. */
+            pageNumber: number;
+            /** Format: date-time */
+            workedAt: string;
         };
         EntrySource: {
             /** Format: uuid */
@@ -1185,6 +1273,40 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["ForbiddenOrigin"];
+        };
+    };
+    getDashboard: {
+        parameters: {
+            query?: {
+                /** @description An IANA time zone name. Defaults to UTC. */
+                timeZone?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dashboard. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dashboard"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
+            /** @description `validation_failed` with a `timeZone` problem: not a known time zone. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listVocabulary: {

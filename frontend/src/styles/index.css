@@ -50,6 +50,14 @@
   --color-pen-blue: #1f4fd1;
   --color-pen-red: #d0312d;
 
+  /* The dashboard's activity calendar: one blue ramp, light to dark for a
+     little to a lot. Checked as an ordered ramp against paper-raised; dark
+     mode runs from dark to light instead. */
+  --color-activity-1: #86b6ef;
+  --color-activity-2: #5598e7;
+  --color-activity-3: #256abf;
+  --color-activity-4: #104281;
+
   --color-transparent: transparent;
   --color-current: currentColor;
 
@@ -105,6 +113,11 @@
   --color-danger: #f08a7f;
 
   --color-highlight: #5c4d1a;
+
+  --color-activity-1: #184f95;
+  --color-activity-2: #2a78d6;
+  --color-activity-3: #6da7ec;
+  --color-activity-4: #b7d3f6;
 }
 
 @layer base {

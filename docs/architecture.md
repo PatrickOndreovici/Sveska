@@ -226,6 +226,19 @@ Rules:
   entry citing it (`sourceAnnotationId`). Deleting the highlight keeps the
   word and clears only the link.
 
+## Dashboard
+
+- A student's home page is their dashboard: totals, a streak, a calendar of
+  the last twelve weeks and where they left off. `GET /api/dashboard` builds
+  it from the study tables (`learning.DashboardService`) in the time zone the
+  browser sends, so days start at the student's midnight.
+- A day counts as active when the student added a word, highlighted text or
+  wrote on a page. The streak counts active days in a row up to today, or up
+  to yesterday while nothing is done yet today.
+- The calendar is a picture only; the summary line and a table carry the
+  same numbers. Its colours are one blue ramp, checked as an ordered ramp
+  against the card in both themes (`--color-activity-*`).
+
 ## Testing
 
 - Go: standard `testing` and `httptest`. Handlers are tested through the router

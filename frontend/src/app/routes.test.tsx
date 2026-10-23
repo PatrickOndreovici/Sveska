@@ -19,7 +19,7 @@ describe("routing and access", () => {
     const nav = screen.getByRole("navigation", { name: "Main" });
     expect(within(nav).getByRole("link", { name: "My workspace" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("Student")).toBeInTheDocument();
-    expect(screen.getByText(/your notebook/)).toBeInTheDocument();
+    expect(await screen.findByText("Day streak")).toBeInTheDocument();
   });
 
   it("shows a teacher the teacher navigation", async () => {

@@ -37,7 +37,9 @@ light and dark with a Light/Dark/System switch), Sveska logo and favicon, UI pri
   typed where the student clicks for filling in, an eraser and undo.
 - Vocabulary list with search and editing (built ahead of phase 2). Words
   saved from a PDF link back to their page.
-- Settings for both roles: display name and profile picture.
+- Settings for both roles: display name and profile picture. A dashboard
+  on a student's home page: words, lessons and PDFs, highlights and notes,
+  activity by day with a streak, and the PDFs to pick up again.
 
 ## Phase 4 — Quizzes and progress
 

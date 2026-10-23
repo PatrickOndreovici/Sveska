@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import type { ActivityDay, Dashboard } from "../lib/api/types";
 
 export interface MockResponse {
   status: number;
@@ -11,12 +12,14 @@ export type MockHandler = MockResponse | ((requestBody: unknown, url: URL) => Mo
  * Replaces fetch with a fake API keyed by "METHOD /path". A key with a query
  * string matches only that exact URL; a key without one matches any query,
  * and a function handler receives the URL to read it. Unknown routes fail the
- * test loudly. GET /api/health answers "ok" unless overridden.
+ * test loudly. GET /api/health answers "ok" and GET /api/dashboard an empty
+ * dashboard unless overridden.
  * Returns the spy so tests can inspect calls.
  */
 export function mockApi(routes: Record<string, MockHandler>) {
   const all: Record<string, MockHandler> = {
     "GET /api/health": { status: 200, body: { status: "ok", database: "ok" } },
+    "GET /api/dashboard": { status: 200, body: dashboard() },
     ...routes,
   };
   return vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
@@ -56,3 +59,23 @@ export const anonymousMe: MockResponse = {
   body: { error: { code: "unauthenticated", message: "Log in to continue." } },
 };
 
+/**
+ * A dashboard for Friday 23 October 2026 with nothing done; days lists the
+ * ones with activity, and overrides replaces anything else.
+ */
+export function dashboard(days: ActivityDay[] = [], overrides: Partial<Dashboard> = {}): Dashboard {
+  const today = Date.parse("2026-10-23T00:00:00Z");
+  const activity = Array.from({ length: 84 }, (_, i) => {
+    const date = new Date(today - (83 - i) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    return days.find((d) => d.date === date) ?? { date, words: 0, highlights: 0, pages: 0 };
+  });
+  return {
+    today: "2026-10-23",
+    totals: { words: 0, wordsThisWeek: 0, lessons: 0, documents: 0, highlights: 0, notes: 0 },
+    streak: 0,
+    activity,
+    recentWords: [],
+    recentDocuments: [],
+    ...overrides,
+  };
+}

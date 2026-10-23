@@ -15,6 +15,7 @@ type Dependencies struct {
 	DB           Pinger
 	Auth         AuthService
 	Profile      ProfileService
+	Dashboard    DashboardService
 	Vocabulary   VocabularyService
 	Lessons      LessonService
 	Annotations  AnnotationService
@@ -26,6 +27,7 @@ type Dependencies struct {
 type api struct {
 	auth         AuthService
 	profile      ProfileService
+	dashboard    DashboardService
 	vocabulary   VocabularyService
 	lessons      LessonService
 	annotations  AnnotationService
@@ -38,6 +40,7 @@ func NewRouter(deps Dependencies) http.Handler {
 	a := &api{
 		auth:         deps.Auth,
 		profile:      deps.Profile,
+		dashboard:    deps.Dashboard,
 		vocabulary:   deps.Vocabulary,
 		lessons:      deps.Lessons,
 		annotations:  deps.Annotations,
@@ -78,6 +81,8 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Get("/me/avatar", a.getAvatar)
 				r.Put("/me/avatar", a.uploadAvatar)
 				r.Delete("/me/avatar", a.deleteAvatar)
+
+				r.Get("/dashboard", a.getDashboard)
 
 				r.Get("/vocabulary", a.listVocabulary)
 				r.Post("/vocabulary", a.createVocabularyEntry)
