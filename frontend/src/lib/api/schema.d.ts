@@ -299,6 +299,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{id}/strokes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a document's strokes.
+         * @description By page number, then in the order they were drawn.
+         */
+        get: operations["listStrokes"];
+        put?: never;
+        /** Draw a stroke on a page. */
+        post: operations["createStroke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/strokes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Erase a stroke.
+         * @description A stroke never changes otherwise; it is drawn or erased.
+         */
+        delete: operations["deleteStroke"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{id}/text-boxes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the text typed onto a document.
+         * @description By page number, then in the order it was added.
+         */
+        get: operations["listTextBoxes"];
+        put?: never;
+        /** Type text onto a page. */
+        post: operations["createTextBox"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/text-boxes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace a text box's text, colour and place on its page.
+         * @description The page it is on does not change.
+         */
+        put: operations["updateTextBox"];
+        post?: never;
+        /** Delete a text box. */
+        delete: operations["deleteTextBox"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -528,6 +619,77 @@ export interface components {
         AnnotationList: {
             annotations: components["schemas"]["Annotation"][];
         };
+        /** @enum {string} */
+        InkColor: "black" | "blue" | "red";
+        /** @description One point of a stroke in 0–1 page coordinates, from the page's top-left corner. */
+        Point: {
+            x: number;
+            y: number;
+        };
+        StrokeInput: {
+            pageNumber: number;
+            color: components["schemas"]["InkColor"];
+            /** @description The points of one movement of the pen, in order. A single point is a dot. */
+            points: components["schemas"]["Point"][];
+        };
+        Stroke: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            documentId: string;
+            pageNumber: number;
+            color: components["schemas"]["InkColor"];
+            points: components["schemas"]["Point"][];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        StrokeEnvelope: {
+            stroke: components["schemas"]["Stroke"];
+        };
+        StrokeList: {
+            strokes: components["schemas"]["Stroke"][];
+        };
+        /**
+         * @description What can change about a text box. (x, y) is its top-left corner in
+         *     0–1 page coordinates; the text wraps at the page's right edge.
+         */
+        TextBoxFields: {
+            x: number;
+            y: number;
+            /**
+             * @description May span several lines. Trimmed.
+             * @example kuća
+             */
+            text: string;
+            color: components["schemas"]["InkColor"];
+        };
+        /** @description The body of PUT /api/text-boxes/{id}, which replaces every field. */
+        TextBoxInput: components["schemas"]["TextBoxFields"];
+        /** @description The body of POST /api/documents/{id}/text-boxes. */
+        NewTextBoxInput: {
+            pageNumber: number;
+        } & components["schemas"]["TextBoxFields"];
+        TextBox: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            documentId: string;
+            pageNumber: number;
+            x: number;
+            y: number;
+            text: string;
+            color: components["schemas"]["InkColor"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        TextBoxEnvelope: {
+            textBox: components["schemas"]["TextBox"];
+        };
+        TextBoxList: {
+            textBoxes: components["schemas"]["TextBox"][];
+        };
         /** @description Envelope returned by every non-2xx response except /api/health. */
         Error: {
             error: {
@@ -617,6 +779,30 @@ export interface components {
          *     Another user's annotation and a malformed id get the same answer.
          */
         AnnotationNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description No such stroke among the user's own (code `stroke_not_found`).
+         *     Another user's stroke and a malformed id get the same answer.
+         */
+        StrokeNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description No such text box among the user's own (code `text_box_not_found`).
+         *     Another user's text box and a malformed id get the same answer.
+         */
+        TextBoxNotFound: {
             headers: {
                 [name: string]: unknown;
             };
@@ -1313,6 +1499,192 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
             404: components["responses"]["AnnotationNotFound"];
+        };
+    };
+    listStrokes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every stroke on the document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrokeList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
+            404: components["responses"]["DocumentNotFound"];
+        };
+    };
+    createStroke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StrokeInput"];
+            };
+        };
+        responses: {
+            /** @description The new stroke. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrokeEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["DocumentNotFound"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    deleteStroke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stroke was erased. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["StrokeNotFound"];
+        };
+    };
+    listTextBoxes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every text box on the document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextBoxList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
+            404: components["responses"]["DocumentNotFound"];
+        };
+    };
+    createTextBox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewTextBoxInput"];
+            };
+        };
+        responses: {
+            /** @description The new text box. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextBoxEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["DocumentNotFound"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    updateTextBox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TextBoxInput"];
+            };
+        };
+        responses: {
+            /** @description The updated text box. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextBoxEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["TextBoxNotFound"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    deleteTextBox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The text box was deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["TextBoxNotFound"];
         };
     };
 }

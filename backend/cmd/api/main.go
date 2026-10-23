@@ -56,6 +56,7 @@ func run() error {
 			Vocabulary:   learning.NewVocabularyService(queries),
 			Lessons:      learning.NewLessonService(queries, files),
 			Annotations:  learning.NewAnnotationService(queries),
+			Drawings:     learning.NewDrawingService(queries),
 			AppOrigin:    cfg.AppOrigin,
 			CookieSecure: cfg.CookieSecure,
 		}),

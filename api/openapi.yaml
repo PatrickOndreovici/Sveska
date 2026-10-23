@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Sveska API
-  version: 0.5.0
+  version: 0.6.0
   description: |
     REST API for the language-learning workspace. This file is the contract:
     endpoints are added here first, then implemented in backend/internal/httpapi
@@ -32,6 +32,12 @@ tags:
       Highlights on a student's own PDFs, each with an optional note. They
       are anchored by page number and rectangles in 0–1 page coordinates, so
       they fit the page at any zoom. Private to their owner, like documents.
+  - name: drawings
+    description: |
+      Writing and drawing on a student's own PDFs: strokes drawn by hand,
+      such as a circle around an answer, and text typed onto a page, such as
+      the answer to a fill-in exercise. Both are placed in 0–1 page
+      coordinates, like highlights, and are private to their owner.
 paths:
   /api/health:
     get:
@@ -618,6 +624,171 @@ paths:
           $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
         "404":
           $ref: "#/components/responses/AnnotationNotFound"
+  /api/documents/{id}/strokes:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [drawings]
+      operationId: listStrokes
+      summary: List a document's strokes.
+      description: By page number, then in the order they were drawn.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Every stroke on the document.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StrokeList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
+        "404":
+          $ref: "#/components/responses/DocumentNotFound"
+    post:
+      tags: [drawings]
+      operationId: createStroke
+      summary: Draw a stroke on a page.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StrokeInput"
+      responses:
+        "201":
+          description: The new stroke.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StrokeEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/DocumentNotFound"
+        "422":
+          $ref: "#/components/responses/Invalid"
+  /api/strokes/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    delete:
+      tags: [drawings]
+      operationId: deleteStroke
+      summary: Erase a stroke.
+      description: A stroke never changes otherwise; it is drawn or erased.
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: The stroke was erased.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/StrokeNotFound"
+  /api/documents/{id}/text-boxes:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [drawings]
+      operationId: listTextBoxes
+      summary: List the text typed onto a document.
+      description: By page number, then in the order it was added.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Every text box on the document.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextBoxList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
+        "404":
+          $ref: "#/components/responses/DocumentNotFound"
+    post:
+      tags: [drawings]
+      operationId: createTextBox
+      summary: Type text onto a page.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewTextBoxInput"
+      responses:
+        "201":
+          description: The new text box.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextBoxEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/DocumentNotFound"
+        "422":
+          $ref: "#/components/responses/Invalid"
+  /api/text-boxes/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    put:
+      tags: [drawings]
+      operationId: updateTextBox
+      summary: Replace a text box's text, colour and place on its page.
+      description: The page it is on does not change.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TextBoxInput"
+      responses:
+        "200":
+          description: The updated text box.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextBoxEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/TextBoxNotFound"
+        "422":
+          $ref: "#/components/responses/Invalid"
+    delete:
+      tags: [drawings]
+      operationId: deleteTextBox
+      summary: Delete a text box.
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: The text box was deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/TextBoxNotFound"
 components:
   securitySchemes:
     sessionCookie:
@@ -691,6 +862,22 @@ components:
       description: |
         No such annotation among the user's own (code `annotation_not_found`).
         Another user's annotation and a malformed id get the same answer.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    StrokeNotFound:
+      description: |
+        No such stroke among the user's own (code `stroke_not_found`).
+        Another user's stroke and a malformed id get the same answer.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TextBoxNotFound:
+      description: |
+        No such text box among the user's own (code `text_box_not_found`).
+        Another user's text box and a malformed id get the same answer.
       content:
         application/json:
           schema:
@@ -1170,6 +1357,161 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Annotation"
+    InkColor:
+      type: string
+      enum: [black, blue, red]
+    Point:
+      description: One point of a stroke in 0–1 page coordinates, from the page's top-left corner.
+      type: object
+      additionalProperties: false
+      required: [x, y]
+      properties:
+        x:
+          type: number
+          minimum: 0
+          maximum: 1
+        y:
+          type: number
+          minimum: 0
+          maximum: 1
+    StrokeInput:
+      type: object
+      additionalProperties: false
+      required: [pageNumber, color, points]
+      properties:
+        pageNumber:
+          type: integer
+          minimum: 1
+          maximum: 100000
+        color:
+          $ref: "#/components/schemas/InkColor"
+        points:
+          description: The points of one movement of the pen, in order. A single point is a dot.
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/Point"
+    Stroke:
+      type: object
+      additionalProperties: false
+      required: [id, documentId, pageNumber, color, points, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        pageNumber:
+          type: integer
+        color:
+          $ref: "#/components/schemas/InkColor"
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/Point"
+        createdAt:
+          type: string
+          format: date-time
+    StrokeEnvelope:
+      type: object
+      additionalProperties: false
+      required: [stroke]
+      properties:
+        stroke:
+          $ref: "#/components/schemas/Stroke"
+    StrokeList:
+      type: object
+      additionalProperties: false
+      required: [strokes]
+      properties:
+        strokes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Stroke"
+    TextBoxFields:
+      description: |
+        What can change about a text box. (x, y) is its top-left corner in
+        0–1 page coordinates; the text wraps at the page's right edge.
+      type: object
+      required: [x, y, text, color]
+      properties:
+        x:
+          type: number
+          minimum: 0
+          exclusiveMaximum: 1
+        y:
+          type: number
+          minimum: 0
+          exclusiveMaximum: 1
+        text:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: May span several lines. Trimmed.
+          example: kuća
+        color:
+          $ref: "#/components/schemas/InkColor"
+    TextBoxInput:
+      description: The body of PUT /api/text-boxes/{id}, which replaces every field.
+      allOf:
+        - $ref: "#/components/schemas/TextBoxFields"
+      unevaluatedProperties: false
+    NewTextBoxInput:
+      description: The body of POST /api/documents/{id}/text-boxes.
+      allOf:
+        - $ref: "#/components/schemas/TextBoxFields"
+      required: [pageNumber]
+      properties:
+        pageNumber:
+          type: integer
+          minimum: 1
+          maximum: 100000
+      unevaluatedProperties: false
+    TextBox:
+      type: object
+      additionalProperties: false
+      required: [id, documentId, pageNumber, x, y, text, color, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        pageNumber:
+          type: integer
+        x:
+          type: number
+        y:
+          type: number
+        text:
+          type: string
+        color:
+          $ref: "#/components/schemas/InkColor"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    TextBoxEnvelope:
+      type: object
+      additionalProperties: false
+      required: [textBox]
+      properties:
+        textBox:
+          $ref: "#/components/schemas/TextBox"
+    TextBoxList:
+      type: object
+      additionalProperties: false
+      required: [textBoxes]
+      properties:
+        textBoxes:
+          type: array
+          items:
+            $ref: "#/components/schemas/TextBox"
     Error:
       description: Envelope returned by every non-2xx response except /api/health.
       type: object

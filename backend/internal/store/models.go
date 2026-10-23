@@ -53,6 +53,49 @@ func (ns NullGrammaticalGender) Value() (driver.Value, error) {
 	return string(ns.GrammaticalGender), nil
 }
 
+type InkColor string
+
+const (
+	InkColorBlack InkColor = "black"
+	InkColorBlue  InkColor = "blue"
+	InkColorRed   InkColor = "red"
+)
+
+func (e *InkColor) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = InkColor(s)
+	case string:
+		*e = InkColor(s)
+	default:
+		return fmt.Errorf("unsupported scan type for InkColor: %T", src)
+	}
+	return nil
+}
+
+type NullInkColor struct {
+	InkColor InkColor
+	Valid    bool // Valid is true if InkColor is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullInkColor) Scan(value interface{}) error {
+	if value == nil {
+		ns.InkColor, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.InkColor.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullInkColor) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.InkColor), nil
+}
+
 type PartOfSpeech string
 
 const (
@@ -205,6 +248,16 @@ type Document struct {
 	CreatedAt  time.Time
 }
 
+type InkStroke struct {
+	ID         string
+	OwnerID    string
+	DocumentID string
+	PageNumber int32
+	Color      InkColor
+	Points     []byte
+	CreatedAt  time.Time
+}
+
 type Lesson struct {
 	ID          string
 	OwnerID     string
@@ -220,6 +273,19 @@ type Session struct {
 	TokenHash []byte
 	CreatedAt time.Time
 	ExpiresAt time.Time
+}
+
+type TextBox struct {
+	ID         string
+	OwnerID    string
+	DocumentID string
+	PageNumber int32
+	X          float64
+	Y          float64
+	Body       string
+	Color      InkColor
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 type User struct {

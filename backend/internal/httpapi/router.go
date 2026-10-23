@@ -17,6 +17,7 @@ type Dependencies struct {
 	Vocabulary   VocabularyService
 	Lessons      LessonService
 	Annotations  AnnotationService
+	Drawings     DrawingService
 	AppOrigin    string
 	CookieSecure bool
 }
@@ -26,6 +27,7 @@ type api struct {
 	vocabulary   VocabularyService
 	lessons      LessonService
 	annotations  AnnotationService
+	drawings     DrawingService
 	cookieSecure bool
 }
 
@@ -36,6 +38,7 @@ func NewRouter(deps Dependencies) http.Handler {
 		vocabulary:   deps.Vocabulary,
 		lessons:      deps.Lessons,
 		annotations:  deps.Annotations,
+		drawings:     deps.Drawings,
 		cookieSecure: deps.CookieSecure,
 	}
 
@@ -86,9 +89,17 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Delete("/documents/{id}", a.deleteDocument)
 				r.Get("/documents/{id}/annotations", a.listAnnotations)
 				r.Post("/documents/{id}/annotations", a.createAnnotation)
+				r.Get("/documents/{id}/strokes", a.listStrokes)
+				r.Post("/documents/{id}/strokes", a.createStroke)
+				r.Get("/documents/{id}/text-boxes", a.listTextBoxes)
+				r.Post("/documents/{id}/text-boxes", a.createTextBox)
 
 				r.Put("/annotations/{id}", a.updateAnnotation)
 				r.Delete("/annotations/{id}", a.deleteAnnotation)
+
+				r.Delete("/strokes/{id}", a.deleteStroke)
+				r.Put("/text-boxes/{id}", a.updateTextBox)
+				r.Delete("/text-boxes/{id}", a.deleteTextBox)
 			})
 		})
 	})

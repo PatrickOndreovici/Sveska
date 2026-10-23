@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS ink_strokes;
+DROP TYPE IF EXISTS ink_color;
