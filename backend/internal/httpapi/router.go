@@ -16,6 +16,7 @@ type Dependencies struct {
 	Auth         AuthService
 	Vocabulary   VocabularyService
 	Lessons      LessonService
+	Annotations  AnnotationService
 	AppOrigin    string
 	CookieSecure bool
 }
@@ -24,12 +25,19 @@ type api struct {
 	auth         AuthService
 	vocabulary   VocabularyService
 	lessons      LessonService
+	annotations  AnnotationService
 	cookieSecure bool
 }
 
 // NewRouter builds the HTTP handler for the API.
 func NewRouter(deps Dependencies) http.Handler {
-	a := &api{auth: deps.Auth, vocabulary: deps.Vocabulary, lessons: deps.Lessons, cookieSecure: deps.CookieSecure}
+	a := &api{
+		auth:         deps.Auth,
+		vocabulary:   deps.Vocabulary,
+		lessons:      deps.Lessons,
+		annotations:  deps.Annotations,
+		cookieSecure: deps.CookieSecure,
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -76,6 +84,11 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Get("/documents/{id}", a.getDocument)
 				r.Get("/documents/{id}/file", a.downloadDocument)
 				r.Delete("/documents/{id}", a.deleteDocument)
+				r.Get("/documents/{id}/annotations", a.listAnnotations)
+				r.Post("/documents/{id}/annotations", a.createAnnotation)
+
+				r.Put("/annotations/{id}", a.updateAnnotation)
+				r.Delete("/annotations/{id}", a.deleteAnnotation)
 			})
 		})
 	})

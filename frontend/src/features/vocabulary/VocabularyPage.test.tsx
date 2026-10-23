@@ -15,6 +15,7 @@ const blank = {
   aspectPair: "",
   feminineForm: "",
   neuterForm: "",
+  source: null,
   createdAt: "2026-10-23T10:00:00Z",
   updatedAt: "2026-10-23T10:00:00Z",
 } as const;

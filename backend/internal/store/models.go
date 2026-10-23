@@ -182,6 +182,18 @@ func (ns NullVerbAspect) Value() (driver.Value, error) {
 	return string(ns.VerbAspect), nil
 }
 
+type Annotation struct {
+	ID         string
+	OwnerID    string
+	DocumentID string
+	PageNumber int32
+	Rects      []byte
+	Quote      string
+	Note       string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
 type Document struct {
 	ID         string
 	OwnerID    string
@@ -221,19 +233,20 @@ type User struct {
 }
 
 type VocabularyEntry struct {
-	ID           string
-	OwnerID      string
-	Term         string
-	Translation  string
-	Notes        string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	PartOfSpeech NullPartOfSpeech
-	Example      string
-	Gender       NullGrammaticalGender
-	Plural       string
-	Aspect       NullVerbAspect
-	AspectPair   string
-	FeminineForm string
-	NeuterForm   string
+	ID                 string
+	OwnerID            string
+	Term               string
+	Translation        string
+	Notes              string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	PartOfSpeech       NullPartOfSpeech
+	Example            string
+	Gender             NullGrammaticalGender
+	Plural             string
+	Aspect             NullVerbAspect
+	AspectPair         string
+	FeminineForm       string
+	NeuterForm         string
+	SourceAnnotationID *string
 }

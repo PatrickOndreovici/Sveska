@@ -55,6 +55,7 @@ func run() error {
 			Auth:         identity.NewService(queries, cfg.SessionTTL),
 			Vocabulary:   learning.NewVocabularyService(queries),
 			Lessons:      learning.NewLessonService(queries, files),
+			Annotations:  learning.NewAnnotationService(queries),
 			AppOrigin:    cfg.AppOrigin,
 			CookieSecure: cfg.CookieSecure,
 		}),

@@ -27,3 +27,10 @@ var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]
 func isUUID(id string) bool {
 	return uuidPattern.MatchString(id)
 }
+
+func validatePageNumber(n int) string {
+	if n < 1 || n > maxPageNumber {
+		return "Choose a page of the document."
+	}
+	return ""
+}

@@ -16,6 +16,7 @@ import (
 // VocabularyService is what the HTTP layer needs from learning.
 type VocabularyService interface {
 	Create(ctx context.Context, in learning.EntryFields) (learning.VocabularyEntry, error)
+	CreateFromAnnotation(ctx context.Context, annotationID string, in learning.EntryFields) (learning.VocabularyEntry, error)
 	List(ctx context.Context, in learning.ListEntriesInput) (learning.EntryPage, error)
 	Update(ctx context.Context, id string, in learning.EntryFields) (learning.VocabularyEntry, error)
 	Delete(ctx context.Context, id string) error
@@ -38,6 +39,14 @@ type entryRequest struct {
 	NeuterForm   string `json:"neuterForm"`
 }
 
+// newEntryRequest is the body of POST /api/vocabulary: an entry plus,
+// for a word saved from a PDF, the highlight it was selected from. The
+// source is set once; PUT does not accept it.
+type newEntryRequest struct {
+	entryRequest
+	SourceAnnotationID string `json:"sourceAnnotationId"`
+}
+
 func (req entryRequest) toFields() learning.EntryFields {
 	return learning.EntryFields{
 		Term:         req.Term,
@@ -55,20 +64,30 @@ func (req entryRequest) toFields() learning.EntryFields {
 }
 
 type entryResponse struct {
-	ID           string    `json:"id"`
-	Term         string    `json:"term"`
-	Translation  string    `json:"translation"`
-	Notes        string    `json:"notes"`
-	Example      string    `json:"example"`
-	PartOfSpeech string    `json:"partOfSpeech"`
-	Gender       string    `json:"gender"`
-	Plural       string    `json:"plural"`
-	Aspect       string    `json:"aspect"`
-	AspectPair   string    `json:"aspectPair"`
-	FeminineForm string    `json:"feminineForm"`
-	NeuterForm   string    `json:"neuterForm"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	ID           string `json:"id"`
+	Term         string `json:"term"`
+	Translation  string `json:"translation"`
+	Notes        string `json:"notes"`
+	Example      string `json:"example"`
+	PartOfSpeech string `json:"partOfSpeech"`
+	Gender       string `json:"gender"`
+	Plural       string `json:"plural"`
+	Aspect       string `json:"aspect"`
+	AspectPair   string `json:"aspectPair"`
+	FeminineForm string `json:"feminineForm"`
+	NeuterForm   string `json:"neuterForm"`
+	// Source is null for a word that was typed in.
+	Source    *entrySourceResponse `json:"source"`
+	CreatedAt time.Time            `json:"createdAt"`
+	UpdatedAt time.Time            `json:"updatedAt"`
+}
+
+// entrySourceResponse is where a word was saved from: enough to link to the page.
+type entrySourceResponse struct {
+	AnnotationID  string `json:"annotationId"`
+	DocumentID    string `json:"documentId"`
+	DocumentTitle string `json:"documentTitle"`
+	PageNumber    int    `json:"pageNumber"`
 }
 
 type entryEnvelope struct {
@@ -84,7 +103,7 @@ type entryPageResponse struct {
 }
 
 func toEntryResponse(e learning.VocabularyEntry) entryResponse {
-	return entryResponse{
+	resp := entryResponse{
 		ID:           e.ID,
 		Term:         e.Term,
 		Translation:  e.Translation,
@@ -100,6 +119,15 @@ func toEntryResponse(e learning.VocabularyEntry) entryResponse {
 		CreatedAt:    e.CreatedAt.UTC(),
 		UpdatedAt:    e.UpdatedAt.UTC(),
 	}
+	if src := e.Source; src != nil {
+		resp.Source = &entrySourceResponse{
+			AnnotationID:  src.AnnotationID,
+			DocumentID:    src.DocumentID,
+			DocumentTitle: src.DocumentTitle,
+			PageNumber:    src.PageNumber,
+		}
+	}
+	return resp
 }
 
 func (a *api) listVocabulary(w http.ResponseWriter, r *http.Request) {
@@ -155,12 +183,18 @@ func intParam(q url.Values, name string) (int, error) {
 }
 
 func (a *api) createVocabularyEntry(w http.ResponseWriter, r *http.Request) {
-	var req entryRequest
+	var req newEntryRequest
 	if err := decodeJSON(w, r, &req); err != nil {
 		writeServiceError(w, r, err)
 		return
 	}
-	entry, err := a.vocabulary.Create(r.Context(), req.toFields())
+	var entry learning.VocabularyEntry
+	var err error
+	if req.SourceAnnotationID == "" {
+		entry, err = a.vocabulary.Create(r.Context(), req.toFields())
+	} else {
+		entry, err = a.vocabulary.CreateFromAnnotation(r.Context(), req.SourceAnnotationID, req.toFields())
+	}
 	if err != nil {
 		writeServiceError(w, r, err)
 		return

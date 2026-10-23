@@ -63,8 +63,18 @@ type EntryFields struct {
 type VocabularyEntry struct {
 	ID string
 	EntryFields
+	Source    *EntrySource // nil for a word typed in rather than saved from a PDF
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// EntrySource is the highlight a word was saved from, so the vocabulary can
+// link back to the page it was read on.
+type EntrySource struct {
+	AnnotationID  string
+	DocumentID    string
+	DocumentTitle string
+	PageNumber    int
 }
 
 // EntrySort is the order of the list.
@@ -112,6 +122,8 @@ type VocabularyStore interface {
 	CountVocabularyEntries(ctx context.Context, arg store.CountVocabularyEntriesParams) (int64, error)
 	UpdateVocabularyEntry(ctx context.Context, arg store.UpdateVocabularyEntryParams) (store.VocabularyEntry, error)
 	DeleteVocabularyEntry(ctx context.Context, arg store.DeleteVocabularyEntryParams) (int64, error)
+	GetAnnotationSource(ctx context.Context, arg store.GetAnnotationSourceParams) (store.GetAnnotationSourceRow, error)
+	ListEntrySources(ctx context.Context, arg store.ListEntrySourcesParams) ([]store.ListEntrySourcesRow, error)
 }
 
 // VocabularyService lets a user keep their own list of words. Every method
@@ -140,7 +152,46 @@ func (s *VocabularyService) Create(ctx context.Context, in EntryFields) (Vocabul
 	if fields := validateEntry(in); len(fields) > 0 {
 		return VocabularyEntry{}, apperr.Validation(fields)
 	}
+	return s.create(ctx, actor, in, nil)
+}
 
+// CreateFromAnnotation saves a new entry that cites the highlight it was
+// selected from. The highlight must be one of the current user's own.
+func (s *VocabularyService) CreateFromAnnotation(ctx context.Context, annotationID string, in EntryFields) (VocabularyEntry, error) {
+	actor, err := access.RequireStudent(ctx)
+	if err != nil {
+		return VocabularyEntry{}, err
+	}
+	in = normalizeEntry(in)
+	if fields := validateEntry(in); len(fields) > 0 {
+		return VocabularyEntry{}, apperr.Validation(fields)
+	}
+	if !isUUID(annotationID) {
+		return VocabularyEntry{}, errAnnotationNotFound
+	}
+	src, err := s.store.GetAnnotationSource(ctx, store.GetAnnotationSourceParams{ID: annotationID, OwnerID: actor.User.ID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return VocabularyEntry{}, errAnnotationNotFound
+	}
+	if err != nil {
+		return VocabularyEntry{}, fmt.Errorf("get annotation %s: %w", annotationID, err)
+	}
+
+	entry, err := s.create(ctx, actor, in, &annotationID)
+	if err != nil {
+		return VocabularyEntry{}, err
+	}
+	entry.Source = &EntrySource{
+		AnnotationID:  src.ID,
+		DocumentID:    src.DocumentID,
+		DocumentTitle: src.DocumentTitle,
+		PageNumber:    int(src.PageNumber),
+	}
+	return entry, nil
+}
+
+// create inserts already validated fields.
+func (s *VocabularyService) create(ctx context.Context, actor access.Actor, in EntryFields, sourceAnnotationID *string) (VocabularyEntry, error) {
 	row, err := s.store.CreateVocabularyEntry(ctx, store.CreateVocabularyEntryParams{
 		OwnerID:      actor.User.ID,
 		Term:         in.Term,
@@ -154,9 +205,15 @@ func (s *VocabularyService) Create(ctx context.Context, in EntryFields) (Vocabul
 		AspectPair:   in.AspectPair,
 		FeminineForm: in.FeminineForm,
 		NeuterForm:   in.NeuterForm,
+
+		SourceAnnotationID: sourceAnnotationID,
 	})
 	if isUniqueViolation(err, duplicateEntryIndex) {
 		return VocabularyEntry{}, errDuplicateEntry
+	}
+	// The highlight was deleted between the check and the insert.
+	if isForeignKeyViolation(err, sourceAnnotationFkey) {
+		return VocabularyEntry{}, errAnnotationNotFound
 	}
 	if err != nil {
 		return VocabularyEntry{}, fmt.Errorf("create vocabulary entry: %w", err)
@@ -214,6 +271,9 @@ func (s *VocabularyService) List(ctx context.Context, in ListEntriesInput) (Entr
 	for i, row := range rows {
 		entries[i] = entryFromRow(row)
 	}
+	if err := s.addSources(ctx, actor, entries); err != nil {
+		return EntryPage{}, err
+	}
 	return EntryPage{
 		Entries:         entries,
 		Total:           int(total),
@@ -261,7 +321,51 @@ func (s *VocabularyService) Update(ctx context.Context, id string, in EntryField
 	if err != nil {
 		return VocabularyEntry{}, fmt.Errorf("update vocabulary entry %s: %w", id, err)
 	}
-	return entryFromRow(row), nil
+	entries := []VocabularyEntry{entryFromRow(row)}
+	if err := s.addSources(ctx, actor, entries); err != nil {
+		return VocabularyEntry{}, err
+	}
+	return entries[0], nil
+}
+
+// addSources fills in Source for the entries saved from a highlight. Most
+// words are typed in, so the query only runs when one of them cites one.
+func (s *VocabularyService) addSources(ctx context.Context, actor access.Actor, entries []VocabularyEntry) error {
+	var ids []string
+	for _, e := range entries {
+		if e.Source != nil {
+			ids = append(ids, e.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	rows, err := s.store.ListEntrySources(ctx, store.ListEntrySourcesParams{OwnerID: actor.User.ID, EntryIds: ids})
+	if err != nil {
+		return fmt.Errorf("list entry sources: %w", err)
+	}
+	byEntry := make(map[string]EntrySource, len(rows))
+	for _, r := range rows {
+		byEntry[r.EntryID] = EntrySource{
+			AnnotationID:  r.AnnotationID,
+			DocumentID:    r.DocumentID,
+			DocumentTitle: r.DocumentTitle,
+			PageNumber:    int(r.PageNumber),
+		}
+	}
+	for i := range entries {
+		if entries[i].Source == nil {
+			continue
+		}
+		// Deleted since the entry was read: the database has cleared the link.
+		src, ok := byEntry[entries[i].ID]
+		if !ok {
+			entries[i].Source = nil
+			continue
+		}
+		entries[i].Source = &src
+	}
+	return nil
 }
 
 // Delete removes one of the current user's entries.
@@ -404,7 +508,7 @@ func nullAspect(a Aspect) store.NullVerbAspect {
 // entryFromRow converts a database row. A NULL enum scans as "", which is
 // already this package's "not set".
 func entryFromRow(row store.VocabularyEntry) VocabularyEntry {
-	return VocabularyEntry{
+	entry := VocabularyEntry{
 		ID: row.ID,
 		EntryFields: EntryFields{
 			Term:         row.Term,
@@ -422,7 +526,16 @@ func entryFromRow(row store.VocabularyEntry) VocabularyEntry {
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
 	}
+	// Only the id is known here; addSources replaces it with the full source.
+	if row.SourceAnnotationID != nil {
+		entry.Source = &EntrySource{AnnotationID: *row.SourceAnnotationID}
+	}
+	return entry
 }
 
-// duplicateEntryIndex is the unique index on (owner_id, lower(term), translation).
-const duplicateEntryIndex = "vocabulary_entries_owner_term_translation_key"
+const (
+	// duplicateEntryIndex is the unique index on (owner_id, lower(term), translation).
+	duplicateEntryIndex = "vocabulary_entries_owner_term_translation_key"
+	// sourceAnnotationFkey ties source_annotation_id to the owner's own annotations.
+	sourceAnnotationFkey = "vocabulary_entries_source_annotation_fkey"
+)

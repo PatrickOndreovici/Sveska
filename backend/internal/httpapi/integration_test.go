@@ -53,6 +53,7 @@ func newStackWithFiles(t *testing.T) (*httptest.Server, *pgxpool.Pool, string) {
 		Auth:         identity.NewService(queries, time.Hour),
 		Vocabulary:   learning.NewVocabularyService(queries),
 		Lessons:      learning.NewLessonService(queries, files),
+		Annotations:  learning.NewAnnotationService(queries),
 		AppOrigin:    testOrigin,
 		CookieSecure: false, // httptest serves plain HTTP; a Secure cookie would never be sent back
 	})

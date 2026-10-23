@@ -110,7 +110,7 @@ export interface paths {
          */
         get: operations["listVocabulary"];
         put?: never;
-        /** Add a word. */
+        /** Add a word, typed in or saved from a highlight. */
         post: operations["createVocabularyEntry"];
         delete?: never;
         options?: never;
@@ -249,6 +249,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{id}/annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a document's annotations in reading order.
+         * @description By page number, then oldest first.
+         */
+        get: operations["listAnnotations"];
+        put?: never;
+        /** Highlight text on a page, with an optional note. */
+        post: operations["createAnnotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/annotations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace an annotation's note.
+         * @description The note is the only thing that changes; an empty note leaves a plain
+         *     highlight. The highlighted text and its place stay as they are.
+         */
+        put: operations["updateAnnotationNote"];
+        post?: never;
+        /**
+         * Delete an annotation.
+         * @description Words saved from it stay in the vocabulary and lose only their source.
+         */
+        delete: operations["deleteAnnotation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -306,12 +356,25 @@ export interface components {
          * @enum {string}
          */
         VocabularySort: "newest" | "az";
+        /** @description The body of PUT /api/vocabulary/{id}, which replaces every field. */
+        VocabularyEntryInput: components["schemas"]["VocabularyEntryFields"];
+        /**
+         * @description The body of POST /api/vocabulary. A word saved from a PDF also names
+         *     the highlight it was selected from; the source is set only here.
+         */
+        NewVocabularyEntryInput: {
+            /**
+             * Format: uuid
+             * @description One of the user's own annotations. Leave out for a typed word.
+             */
+            sourceAnnotationId?: string;
+        } & components["schemas"]["VocabularyEntryFields"];
         /**
          * @description The fields a user types in. Grammar fields are only allowed for their
          *     part of speech: gender and plural for nouns, aspect and aspect pair
          *     for verbs, feminine and neuter forms for adjectives. Text is trimmed.
          */
-        VocabularyEntryInput: {
+        VocabularyEntryFields: {
             /** @example kuća */
             term: string;
             /** @example house */
@@ -342,6 +405,8 @@ export interface components {
             aspectPair: string;
             feminineForm: string;
             neuterForm: string;
+            /** @description Where the word was saved from; null for a typed word. */
+            source: components["schemas"]["EntrySource"] | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -408,6 +473,60 @@ export interface components {
                 id: string;
                 title: string;
             };
+        };
+        EntrySource: {
+            /** Format: uuid */
+            annotationId: string;
+            /** Format: uuid */
+            documentId: string;
+            documentTitle: string;
+            pageNumber: number;
+        };
+        /**
+         * @description One rectangle of a highlight in 0–1 page coordinates: x and y from the
+         *     page's top-left corner, all values fractions of the page's width and
+         *     height. It must lie within the page.
+         */
+        Rect: {
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+        };
+        AnnotationInput: {
+            pageNumber: number;
+            /** @description One rectangle per line of the selection. */
+            rects: components["schemas"]["Rect"][];
+            /**
+             * @description The selected text. Trimmed.
+             * @example Dobar dan
+             */
+            quote: string;
+            note?: string;
+        };
+        AnnotationNoteInput: {
+            note: string;
+        };
+        Annotation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            documentId: string;
+            pageNumber: number;
+            rects: components["schemas"]["Rect"][];
+            quote: string;
+            /** @description Empty for a plain highlight. */
+            note: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        AnnotationEnvelope: {
+            annotation: components["schemas"]["Annotation"];
+        };
+        AnnotationList: {
+            annotations: components["schemas"]["Annotation"][];
         };
         /** @description Envelope returned by every non-2xx response except /api/health. */
         Error: {
@@ -486,6 +605,18 @@ export interface components {
          *     came from a foreign Origin (code `forbidden_origin`).
          */
         StudentsOnlyOrForbiddenOrigin: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description No such annotation among the user's own (code `annotation_not_found`).
+         *     Another user's annotation and a malformed id get the same answer.
+         */
+        AnnotationNotFound: {
             headers: {
                 [name: string]: unknown;
             };
@@ -743,7 +874,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["VocabularyEntryInput"];
+                "application/json": components["schemas"]["NewVocabularyEntryInput"];
             };
         };
         responses: {
@@ -758,6 +889,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["AnnotationNotFound"];
             409: components["responses"]["DuplicateEntry"];
             422: components["responses"]["Invalid"];
         };
@@ -1073,6 +1205,114 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["StudentsOnly"];
             404: components["responses"]["DocumentNotFound"];
+        };
+    };
+    listAnnotations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every annotation on the document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
+            404: components["responses"]["DocumentNotFound"];
+        };
+    };
+    createAnnotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnotationInput"];
+            };
+        };
+        responses: {
+            /** @description The new annotation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["DocumentNotFound"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    updateAnnotationNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnotationNoteInput"];
+            };
+        };
+        responses: {
+            /** @description The updated annotation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["AnnotationNotFound"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    deleteAnnotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The annotation was deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["AnnotationNotFound"];
         };
     };
 }
