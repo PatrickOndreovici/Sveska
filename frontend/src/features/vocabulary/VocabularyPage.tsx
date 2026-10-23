@@ -1,127 +1,127 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { cx } from "../../components/ui/cx";
 import { Eyebrow } from "../../components/ui/Eyebrow";
 import { Select } from "../../components/ui/Select";
 import { TextField } from "../../components/ui/TextField";
+import { ApiError } from "../../lib/api/client";
+import type { VocabularyEntry, VocabularyPage as Page } from "../../lib/api/types";
+import {
+  createVocabularyEntry,
+  deleteVocabularyEntry,
+  listVocabulary,
+  updateVocabularyEntry,
+} from "../../lib/api/vocabulary";
 import { AddWordForm } from "./AddWordForm";
 import type { EntryFields } from "./entryFields";
-import { mockEntries, type MockVocabularyEntry } from "./mockEntries";
+import { useDebouncedValue } from "./useDebouncedValue";
 import { VocabularyRow } from "./VocabularyRow";
 
-// MOCK: entries live in component state only and reset on reload. Search,
-// time range, sort and paging all happen here in the browser; the real
-// version sends them to GET /api/vocabulary and gets one page back. Add,
-// edit and delete become POST, PATCH and DELETE calls.
+// Search, time range, sort and paging all happen in the API: the page sends
+// them to GET /api/vocabulary and shows the one page that comes back.
 
-const PAGE_SIZE = 10;
-const DAY_MS = 24 * 60 * 60 * 1000;
+/** How long typing must pause before the search is sent. */
+const SEARCH_DELAY_MS = 300;
 
 type Range = "1d" | "7d" | "30d" | "all";
 type Sort = "newest" | "az";
 
-const ranges: { value: Range; label: string; days: number | null }[] = [
+const ranges: { value: Range; label: string; days: number }[] = [
   { value: "1d", label: "1 day", days: 1 },
   { value: "7d", label: "7 days", days: 7 },
   { value: "30d", label: "30 days", days: 30 },
-  { value: "all", label: "All time", days: null },
+  { value: "all", label: "All time", days: 0 },
 ];
 
-// Serbian Latin alphabet order: c < č < ć < d < dž < đ ... (PostgreSQL: COLLATE "sr-Latn-x-icu").
-const serbianOrder = new Intl.Collator("sr-Latn", { sensitivity: "base" });
-
-/**
- * Lowercase and strip diacritics, so "c" finds "č" and "ć". NFD splits "č"
- * into "c" plus a combining mark, which is then removed. "đ" is its own
- * letter rather than "d" plus a mark, so it is mapped by hand.
- * (PostgreSQL: lower(unaccent(...)).)
- */
-function fold(text: string): string {
-  return text.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").replace(/đ/g, "d");
-}
-
-/**
- * Case- and diacritic-insensitive substring of the word, its translation or
- * its other forms, so "ljudi" finds "čovek".
- */
-function matches(entry: MockVocabularyEntry, query: string): boolean {
-  const q = fold(query.trim());
-  if (q === "") return true;
-  const searchable = [
-    entry.term,
-    entry.translation,
-    entry.plural,
-    entry.aspectPair,
-    entry.feminineForm,
-    entry.neuterForm,
-  ];
-  return searchable.some((text) => fold(text).includes(q));
-}
-
-function inRange(entry: MockVocabularyEntry, range: Range): boolean {
-  const days = ranges.find((r) => r.value === range)?.days ?? null;
-  if (days === null) return true;
-  return Date.now() - new Date(entry.createdAt).getTime() <= days * DAY_MS;
-}
-
-function compare(sort: Sort) {
-  return (a: MockVocabularyEntry, b: MockVocabularyEntry): number =>
-    sort === "az"
-      ? serbianOrder.compare(a.term, b.term) || serbianOrder.compare(a.translation, b.translation)
-      : b.createdAt.localeCompare(a.createdAt);
+function messageOf(error: unknown, fallback: string): string {
+  return error instanceof ApiError ? error.message : fallback;
 }
 
 export function VocabularyPage() {
-  const [entries, setEntries] = useState(mockEntries);
   const [query, setQuery] = useState("");
+  const search = useDebouncedValue(query.trim(), SEARCH_DELAY_MS);
   const [range, setRange] = useState<Range>("all");
   const [sort, setSort] = useState<Sort>("newest");
   const [page, setPage] = useState(1);
-  const [pendingDelete, setPendingDelete] = useState<MockVocabularyEntry | null>(null);
+  // Bumped after every add, edit or delete so the current page is fetched again.
+  const [version, setVersion] = useState(0);
+  const [result, setResult] = useState<Page | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<VocabularyEntry | null>(null);
 
-  const filtered = entries.filter((entry) => matches(entry, query) && inRange(entry, range)).sort(compare(sort));
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  // Deleting the last entry on the last page would otherwise leave an empty page.
-  const currentPage = Math.min(page, pageCount);
-  const firstIndex = (currentPage - 1) * PAGE_SIZE;
-  const visible = filtered.slice(firstIndex, firstIndex + PAGE_SIZE);
+  const days = ranges.find((r) => r.value === range)?.days ?? 0;
 
-  /** Mirrors the unique index: same owner, same term ignoring case, same translation. */
-  function isDuplicate(fields: EntryFields, exceptId?: string): boolean {
-    return entries.some(
-      (entry) =>
-        entry.id !== exceptId &&
-        entry.term.toLowerCase() === fields.term.toLowerCase() &&
-        entry.translation === fields.translation,
+  useEffect(() => {
+    // Aborting on cleanup means a slow response for an old search can never
+    // overwrite the result of a newer one.
+    const controller = new AbortController();
+    listVocabulary({ query: search, days, sort, page }, controller.signal).then(
+      (next) => {
+        // Deleting the last word on the last page leaves that page empty: step back.
+        const lastPage = Math.max(1, Math.ceil(next.total / next.pageSize));
+        if (page > lastPage) {
+          setPage(lastPage);
+          return;
+        }
+        setResult(next);
+        setLoadError(null);
+      },
+      (error: unknown) => {
+        if (controller.signal.aborted) return;
+        setLoadError(messageOf(error, "Could not load your words. Try again."));
+      },
     );
+    return () => {
+      controller.abort();
+    };
+  }, [search, days, sort, page, version]);
+
+  function reload() {
+    setVersion((v) => v + 1);
   }
 
-  function handleAdd(fields: EntryFields): boolean {
-    if (isDuplicate(fields)) return false;
-    setEntries([{ id: crypto.randomUUID(), ...fields, createdAt: new Date().toISOString() }, ...entries]);
-    return true;
+  async function handleAdd(fields: EntryFields) {
+    await createVocabularyEntry(fields);
+    reload();
   }
 
-  function handleSave(id: string, fields: EntryFields): boolean {
-    if (isDuplicate(fields, id)) return false;
-    setEntries(entries.map((entry) => (entry.id === id ? { ...entry, ...fields } : entry)));
-    return true;
+  async function handleSave(id: string, fields: EntryFields) {
+    await updateVocabularyEntry(id, fields);
+    reload();
   }
 
-  function confirmDelete() {
-    if (pendingDelete) setEntries(entries.filter((entry) => entry.id !== pendingDelete.id));
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    const entry = pendingDelete;
     setPendingDelete(null);
+    setDeleteError(null);
+    try {
+      await deleteVocabularyEntry(entry.id);
+    } catch (error) {
+      setDeleteError(messageOf(error, "Could not delete the word. Try again."));
+    }
+    reload();
   }
+
+  const entries = result?.entries ?? [];
+  const total = result?.total ?? 0;
+  const pageSize = result?.pageSize ?? 1;
+  const currentPage = result?.page ?? 1;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const firstIndex = (currentPage - 1) * pageSize;
 
   return (
     <div>
       <header className="max-w-prose">
         <Eyebrow>Vocabulary</Eyebrow>
         <h1 className="mt-3 font-serif text-4xl text-ink sm:text-display">Rečnik</h1>
-        <p className="mt-4 font-serif text-lg text-ink-muted">
-          {entries.length} {entries.length === 1 ? "word" : "words"} collected so far.
-        </p>
+        {result && (
+          <p className="mt-4 font-serif text-lg text-ink-muted">
+            {result.unfilteredTotal} {result.unfilteredTotal === 1 ? "word" : "words"} collected so far.
+          </p>
+        )}
       </header>
 
       {/* The form comes first in the page so it sits above the list on phones;
@@ -198,9 +198,26 @@ export function VocabularyPage() {
             </div>
           </div>
 
-          {visible.length === 0 ? (
+          {deleteError && (
+            <p role="alert" className="mt-6 text-sm text-danger">
+              {deleteError}
+            </p>
+          )}
+
+          {loadError ? (
+            <div role="alert" className="mt-8 flex flex-wrap items-center gap-4">
+              <p className="text-danger">{loadError}</p>
+              <Button variant="secondary" size="sm" onClick={reload}>
+                Try again
+              </Button>
+            </div>
+          ) : !result ? (
+            <p role="status" className="mt-8 text-ink-muted">
+              Loading your words…
+            </p>
+          ) : entries.length === 0 ? (
             <p className="mt-8 text-ink-muted">
-              {entries.length === 0
+              {result.unfilteredTotal === 0
                 ? "No words yet. Add your first one."
                 : query.trim() === ""
                   ? "No words added in this period."
@@ -209,7 +226,7 @@ export function VocabularyPage() {
           ) : (
             <>
               <ul className="mt-6 border-t border-rule">
-                {visible.map((entry) => (
+                {entries.map((entry) => (
                   <VocabularyRow
                     key={entry.id}
                     entry={entry}
@@ -223,7 +240,7 @@ export function VocabularyPage() {
 
               <nav aria-label="Pages" className="mt-6 flex flex-wrap items-center justify-between gap-3">
                 <p className="text-sm text-ink-muted">
-                  {firstIndex + 1}–{firstIndex + visible.length} of {filtered.length}
+                  {firstIndex + 1}–{firstIndex + entries.length} of {total}
                 </p>
                 {pageCount > 1 && (
                   <div className="flex items-center gap-3">
@@ -262,7 +279,9 @@ export function VocabularyPage() {
         open={pendingDelete !== null}
         title="Delete this word?"
         confirmLabel="Delete"
-        onConfirm={confirmDelete}
+        onConfirm={() => {
+          void confirmDelete();
+        }}
         onCancel={() => {
           setPendingDelete(null);
         }}

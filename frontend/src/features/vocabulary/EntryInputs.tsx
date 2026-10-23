@@ -91,6 +91,7 @@ export function EntryInputs({ idPrefix, initial, errors, autoFocus = false, twoC
             spellCheck={false}
             placeholder="e.g. kuće, ljudi"
             defaultValue={initial?.plural}
+            error={errors.plural}
           />
         </>
       )}
@@ -113,6 +114,7 @@ export function EntryInputs({ idPrefix, initial, errors, autoFocus = false, twoC
             spellCheck={false}
             placeholder="e.g. pročitati"
             defaultValue={initial?.aspectPair}
+            error={errors.aspectPair}
           />
         </>
       )}
@@ -127,6 +129,7 @@ export function EntryInputs({ idPrefix, initial, errors, autoFocus = false, twoC
             spellCheck={false}
             placeholder="e.g. dobra"
             defaultValue={initial?.feminineForm}
+            error={errors.feminineForm}
           />
           <TextField
             id={id("neuterForm")}
@@ -136,6 +139,7 @@ export function EntryInputs({ idPrefix, initial, errors, autoFocus = false, twoC
             spellCheck={false}
             placeholder="e.g. dobro"
             defaultValue={initial?.neuterForm}
+            error={errors.neuterForm}
           />
         </>
       )}
@@ -148,10 +152,11 @@ export function EntryInputs({ idPrefix, initial, errors, autoFocus = false, twoC
           lang="sr"
           placeholder="e.g. Čitam knjigu."
           defaultValue={initial?.example}
+          error={errors.example}
         />
       </div>
       <div className={fullWidth}>
-        <TextField id={id("notes")} name="notes" label="Notes" defaultValue={initial?.notes} />
+        <TextField id={id("notes")} name="notes" label="Notes" defaultValue={initial?.notes} error={errors.notes} />
       </div>
     </>
   );

@@ -1,12 +1,13 @@
 import { useState, type SubmitEvent } from "react";
 import { Button } from "../../components/ui/Button";
 import { cx } from "../../components/ui/cx";
-import { DUPLICATE_MESSAGE, readEntryFields, validateEntry, type EntryErrors, type EntryFields } from "./entryFields";
+import { readEntryFields, type EntryFields } from "./entryFields";
 import { EntryInputs } from "./EntryInputs";
+import { useEntryForm } from "./useEntryForm";
 
 type AddWordFormProps = {
-  /** Returns false when the word and translation already exist. */
-  onAdd: (fields: EntryFields) => boolean;
+  /** Saves the word; rejects with an ApiError when the API refuses it. */
+  onAdd: (fields: EntryFields) => Promise<void>;
 };
 
 /**
@@ -15,30 +16,24 @@ type AddWordFormProps = {
  */
 export function AddWordForm({ onAdd }: AddWordFormProps) {
   const [open, setOpen] = useState(false);
-  const [errors, setErrors] = useState<EntryErrors>({});
-  const [duplicate, setDuplicate] = useState(false);
+  const { errors, formError, submitting, submit, reset } = useEntryForm();
   const [added, setAdded] = useState<EntryFields | null>(null);
   // A new key after each add remounts the inputs: every field, the part of
   // speech included, starts empty again and Serbian gets the focus.
   const [formKey, setFormKey] = useState(0);
 
-  function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const fields = readEntryFields(new FormData(event.currentTarget));
-    const found = validateEntry(fields);
-    setErrors(found);
-    if (Object.keys(found).length > 0) return;
-
-    const ok = onAdd(fields);
-    setDuplicate(!ok);
-    if (!ok) return;
+    setAdded(null);
+    if (!(await submit(fields, onAdd))) return;
     setAdded(fields);
     setFormKey(formKey + 1);
   }
 
   // Any typing replaces the last outcome; the confirmation is for the word just added.
   function clearOutcome() {
-    setDuplicate(false);
+    if (formError !== null) reset();
     setAdded(null);
   }
 
@@ -69,17 +64,19 @@ export function AddWordForm({ onAdd }: AddWordFormProps) {
       <form
         id="vocabulary-add-form"
         noValidate
-        onSubmit={handleSubmit}
+        onSubmit={(event) => {
+          void handleSubmit(event);
+        }}
         onInput={clearOutcome}
         className={cx("mt-5 gap-4 lg:grid", open ? "grid" : "hidden")}
       >
         <EntryInputs key={formKey} idPrefix="vocabulary-add" errors={errors} autoFocus={formKey > 0} />
-        {duplicate && (
+        {formError && (
           <p role="alert" className="text-sm text-danger">
-            {DUPLICATE_MESSAGE}
+            {formError}
           </p>
         )}
-        <Button type="submit" className="mt-1 w-full">
+        <Button type="submit" className="mt-1 w-full" disabled={submitting}>
           Add word
         </Button>
         {/* Always rendered so screen readers announce the text when it appears. */}

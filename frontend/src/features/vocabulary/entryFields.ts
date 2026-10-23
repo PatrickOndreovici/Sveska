@@ -27,9 +27,8 @@ export type EntryFields = {
   neuterForm: string;
 };
 
-export type EntryErrors = Partial<Record<"term" | "translation", string>>;
-
-export const DUPLICATE_MESSAGE = "You already have this word with this translation.";
+/** Problems keyed by field name: from validateEntry, or from the API's `fields`. */
+export type EntryErrors = Partial<Record<keyof EntryFields, string>>;
 
 export const partOfSpeechLabels: Record<Exclude<PartOfSpeech, "">, string> = {
   noun: "Noun · imenica",

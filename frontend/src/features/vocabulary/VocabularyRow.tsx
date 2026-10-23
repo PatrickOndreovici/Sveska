@@ -1,25 +1,23 @@
 import { useEffect, useRef, useState, type SubmitEvent } from "react";
 import { Button } from "../../components/ui/Button";
+import type { VocabularyEntry } from "../../lib/api/types";
 import {
   aspectAbbreviations,
   aspectLabels,
-  DUPLICATE_MESSAGE,
   genderAbbreviations,
   genderLabels,
   readEntryFields,
-  validateEntry,
-  type EntryErrors,
   type EntryFields,
 } from "./entryFields";
 import { EntryInputs } from "./EntryInputs";
-import type { MockVocabularyEntry } from "./mockEntries";
+import { useEntryForm } from "./useEntryForm";
 
 const dateFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
 
 type VocabularyRowProps = {
-  entry: MockVocabularyEntry;
-  /** Returns false when the edit would duplicate another entry. */
-  onSave: (fields: EntryFields) => boolean;
+  entry: VocabularyEntry;
+  /** Saves the edit; rejects with an ApiError when the API refuses it. */
+  onSave: (fields: EntryFields) => Promise<void>;
   onDelete: () => void;
 };
 
@@ -54,8 +52,7 @@ function formsOf(entry: EntryFields): string | null {
 /** One list item that switches in place between reading and an edit form. */
 export function VocabularyRow({ entry, onSave, onDelete }: VocabularyRowProps) {
   const [editing, setEditing] = useState(false);
-  const [errors, setErrors] = useState<EntryErrors>({});
-  const [duplicate, setDuplicate] = useState(false);
+  const { errors, formError, submitting, submit, reset } = useEntryForm();
   const editButton = useRef<HTMLButtonElement>(null);
   const wasEditing = useRef(false);
 
@@ -66,21 +63,14 @@ export function VocabularyRow({ entry, onSave, onDelete }: VocabularyRowProps) {
   }, [editing]);
 
   function startEditing() {
-    setErrors({});
-    setDuplicate(false);
+    reset();
     setEditing(true);
   }
 
-  function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const fields = readEntryFields(new FormData(event.currentTarget));
-    const found = validateEntry(fields);
-    setErrors(found);
-    if (Object.keys(found).length > 0) return;
-
-    const ok = onSave(fields);
-    setDuplicate(!ok);
-    if (ok) setEditing(false);
+    if (await submit(fields, onSave)) setEditing(false);
   }
 
   if (editing) {
@@ -89,20 +79,22 @@ export function VocabularyRow({ entry, onSave, onDelete }: VocabularyRowProps) {
         <form
           noValidate
           aria-label={`Edit ${entry.term}`}
-          onSubmit={handleSubmit}
+          onSubmit={(event) => {
+            void handleSubmit(event);
+          }}
           onKeyDown={(event) => {
             if (event.key === "Escape") setEditing(false);
           }}
           className="grid gap-4 sm:grid-cols-2"
         >
           <EntryInputs idPrefix={`vocabulary-edit-${entry.id}`} initial={entry} errors={errors} autoFocus twoColumns />
-          {duplicate && (
+          {formError && (
             <p role="alert" className="text-sm text-danger sm:col-span-2">
-              {DUPLICATE_MESSAGE}
+              {formError}
             </p>
           )}
           <div className="flex gap-3 sm:col-span-2">
-            <Button type="submit" size="sm">
+            <Button type="submit" size="sm" disabled={submitting}>
               Save
             </Button>
             <Button

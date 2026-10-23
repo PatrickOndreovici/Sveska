@@ -24,19 +24,28 @@ const UNEXPECTED_ERROR_MESSAGE = "Something went wrong on our side. Try again.";
 /**
  * Sends a JSON request to the API. Resolves with the parsed body (or
  * undefined for 204) and rejects with ApiError for any non-2xx response.
+ * An aborted request rejects with the browser's AbortError instead, so
+ * callers can tell a cancelled request from a failed one.
  */
-export async function apiRequest<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+export async function apiRequest<T>(
+  method: "GET" | "POST" | "PUT" | "DELETE",
+  path: string,
+  body?: unknown,
+  signal?: AbortSignal,
+): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   const init: RequestInit = { method, credentials: "same-origin", headers };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(body);
   }
+  if (signal) init.signal = signal;
 
   let response: Response;
   try {
     response = await fetch(path, init);
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new ApiError(0, "network_error", NETWORK_ERROR_MESSAGE);
   }
 
