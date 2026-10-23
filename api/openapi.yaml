@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Sveska API
-  version: 0.3.0
+  version: 0.4.0
   description: |
     REST API for the language-learning workspace. This file is the contract:
     endpoints are added here first, then implemented in backend/internal/httpapi
@@ -20,6 +20,10 @@ tags:
     description: Accounts and sessions.
   - name: vocabulary
     description: A user's own list of words. Every entry is private to its owner.
+  - name: lessons
+    description: |
+      A user's lessons and the PDFs uploaded into them. Every lesson and
+      document is private to its owner; someone else's id answers 404.
 paths:
   /api/health:
     get:
@@ -273,6 +277,228 @@ paths:
           $ref: "#/components/responses/ForbiddenOrigin"
         "404":
           $ref: "#/components/responses/EntryNotFound"
+  /api/lessons:
+    get:
+      tags: [lessons]
+      operationId: listLessons
+      summary: List the user's lessons, newest first.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Every lesson of the user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LessonList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+    post:
+      tags: [lessons]
+      operationId: createLesson
+      summary: Create a lesson.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LessonInput"
+      responses:
+        "201":
+          description: The new lesson.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LessonEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/ForbiddenOrigin"
+        "422":
+          $ref: "#/components/responses/Invalid"
+  /api/lessons/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [lessons]
+      operationId: getLesson
+      summary: Get a lesson with its PDFs in upload order.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The lesson and its documents.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LessonDetail"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/LessonNotFound"
+    put:
+      tags: [lessons]
+      operationId: updateLesson
+      summary: Replace a lesson's title and description.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LessonInput"
+      responses:
+        "200":
+          description: The updated lesson.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LessonEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/ForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/LessonNotFound"
+        "422":
+          $ref: "#/components/responses/Invalid"
+    delete:
+      tags: [lessons]
+      operationId: deleteLesson
+      summary: Delete a lesson and every PDF in it.
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: The lesson and its documents were deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/ForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/LessonNotFound"
+  /api/lessons/{id}/documents:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [lessons]
+      operationId: uploadDocument
+      summary: Upload a PDF into a lesson.
+      description: |
+        The file must start with `%PDF-` and be at most 20 MB; the browser's
+        claimed content type is ignored. The title is the file name without
+        its `.pdf` extension.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The PDF. Other form fields are ignored.
+      responses:
+        "201":
+          description: The stored document.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/ForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/LessonNotFound"
+        "422":
+          description: |
+            Not multipart (`unsupported_content_type`), unreadable
+            (`invalid_multipart`), or `validation_failed` with a `file`
+            problem: missing, not a PDF, or over 20 MB.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/documents/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [lessons]
+      operationId: getDocument
+      summary: Get a document's details and its lesson.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The document.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentDetail"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/DocumentNotFound"
+    delete:
+      tags: [lessons]
+      operationId: deleteDocument
+      summary: Delete a document.
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: The document was deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/ForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/DocumentNotFound"
+  /api/documents/{id}/file:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [lessons]
+      operationId: downloadDocument
+      summary: Download the PDF bytes.
+      description: |
+        Sent as an attachment with a sandboxing Content-Security-Policy, so
+        opening the URL directly downloads the file rather than rendering it
+        on the app's origin. Supports Range requests.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The PDF.
+          headers:
+            Content-Disposition:
+              description: "`attachment` with the document title as the file name."
+              schema:
+                type: string
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: The requested byte range of the PDF.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/DocumentNotFound"
 components:
   securitySchemes:
     sessionCookie:
@@ -287,6 +513,14 @@ components:
       description: Sets the `sveska_session` cookie.
       schema:
         type: string
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   responses:
     Unauthenticated:
       description: No valid session (code `unauthenticated`).
@@ -314,6 +548,22 @@ components:
       description: |
         No such entry among the user's own (code `entry_not_found`). Another
         user's entry and a malformed id get the same answer.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    LessonNotFound:
+      description: |
+        No such lesson among the user's own (code `lesson_not_found`).
+        Another user's lesson and a malformed id get the same answer.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    DocumentNotFound:
+      description: |
+        No such document among the user's own (code `document_not_found`).
+        Another user's document and a malformed id get the same answer.
       content:
         application/json:
           schema:
@@ -532,6 +782,111 @@ components:
           type: integer
         pageSize:
           type: integer
+    LessonInput:
+      type: object
+      additionalProperties: false
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: Lekcija 3 – Padeži
+        description:
+          type: string
+          maxLength: 2000
+    Lesson:
+      type: object
+      additionalProperties: false
+      required: [id, title, description, documentCount, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        documentCount:
+          type: integer
+          description: How many PDFs the lesson holds.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    LessonEnvelope:
+      type: object
+      additionalProperties: false
+      required: [lesson]
+      properties:
+        lesson:
+          $ref: "#/components/schemas/Lesson"
+    LessonList:
+      type: object
+      additionalProperties: false
+      required: [lessons]
+      properties:
+        lessons:
+          type: array
+          items:
+            $ref: "#/components/schemas/Lesson"
+    LessonDetail:
+      type: object
+      additionalProperties: false
+      required: [lesson, documents]
+      properties:
+        lesson:
+          $ref: "#/components/schemas/Lesson"
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/Document"
+    Document:
+      type: object
+      additionalProperties: false
+      required: [id, lessonId, title, byteSize, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        lessonId:
+          type: string
+          format: uuid
+        title:
+          type: string
+          description: The uploaded file's name without `.pdf`.
+        byteSize:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+    DocumentEnvelope:
+      type: object
+      additionalProperties: false
+      required: [document]
+      properties:
+        document:
+          $ref: "#/components/schemas/Document"
+    DocumentDetail:
+      type: object
+      additionalProperties: false
+      required: [document, lesson]
+      properties:
+        document:
+          $ref: "#/components/schemas/Document"
+        lesson:
+          type: object
+          additionalProperties: false
+          required: [id, title]
+          properties:
+            id:
+              type: string
+              format: uuid
+            title:
+              type: string
     Error:
       description: Envelope returned by every non-2xx response except /api/health.
       type: object

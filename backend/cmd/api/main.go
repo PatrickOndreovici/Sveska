@@ -13,6 +13,7 @@ import (
 
 	"learning-serbian-platform/backend/internal/config"
 	"learning-serbian-platform/backend/internal/database"
+	"learning-serbian-platform/backend/internal/filestore"
 	"learning-serbian-platform/backend/internal/httpapi"
 	"learning-serbian-platform/backend/internal/identity"
 	"learning-serbian-platform/backend/internal/learning"
@@ -41,6 +42,11 @@ func run() error {
 	}
 	defer pool.Close()
 
+	files, err := filestore.NewLocal(cfg.FileStorageDir)
+	if err != nil {
+		return err
+	}
+
 	queries := store.New(pool)
 	server := &http.Server{
 		Addr: cfg.HTTPAddr,
@@ -48,6 +54,7 @@ func run() error {
 			DB:           pool,
 			Auth:         identity.NewService(queries, cfg.SessionTTL),
 			Vocabulary:   learning.NewVocabularyService(queries),
+			Lessons:      learning.NewLessonService(queries, files),
 			AppOrigin:    cfg.AppOrigin,
 			CookieSecure: cfg.CookieSecure,
 		}),

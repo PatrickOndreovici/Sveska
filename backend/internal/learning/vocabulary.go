@@ -5,13 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"learning-serbian-platform/backend/internal/access"
 	"learning-serbian-platform/backend/internal/apperr"
@@ -365,14 +362,6 @@ func validateList(in ListEntriesInput) map[string]string {
 	return fields
 }
 
-// validateLength counts characters, not bytes, like char_length in the CHECKs.
-func validateLength(s string, max int) string {
-	if utf8.RuneCountInString(s) > max {
-		return fmt.Sprintf("Use at most %d characters.", max)
-	}
-	return ""
-}
-
 func validatePartOfSpeech(p PartOfSpeech) string {
 	switch p {
 	case "", PartOfSpeechNoun, PartOfSpeechVerb, PartOfSpeechAdjective, PartOfSpeechOther:
@@ -395,20 +384,6 @@ func validateAspect(a Aspect) string {
 		return ""
 	}
 	return "Choose imperfective, perfective or biaspectual."
-}
-
-func addProblem(fields map[string]string, field, problem string) {
-	if problem != "" {
-		fields[field] = problem
-	}
-}
-
-// uuidPattern is the canonical form ids come back in. Anything else cannot
-// name an entry, and PostgreSQL would fail on it instead of finding nothing.
-var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
-
-func isUUID(id string) bool {
-	return uuidPattern.MatchString(id)
 }
 
 // The database stores an unset enum as NULL; this package uses "". The
@@ -451,8 +426,3 @@ func entryFromRow(row store.VocabularyEntry) VocabularyEntry {
 
 // duplicateEntryIndex is the unique index on (owner_id, lower(term), translation).
 const duplicateEntryIndex = "vocabulary_entries_owner_term_translation_key"
-
-func isUniqueViolation(err error, constraint string) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == constraint
-}

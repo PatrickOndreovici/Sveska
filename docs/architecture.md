@@ -54,7 +54,7 @@ cookies stay first-party and CORS is unnecessary.
 │   │   ├── testdb/             # integration-test database helper (built)
 │   │   ├── learning/           # lessons, documents, annotations, vocabulary, quizzes, progress
 │   │   ├── teaching/           # links, classes, assignments, submissions, grading, feedback
-│   │   └── filestore/          # PDF storage interface + local implementation (phase 2)
+│   │   └── filestore/          # PDF storage on local disk (built in phase 2)
 │   ├── go.mod
 │   └── sqlc.yaml
 ├── frontend/
@@ -189,10 +189,12 @@ Rules:
 - Primitives live in `components/ui` and are added when a second caller needs
   them, not in advance.
 
-## PDFs and annotations (phase 2–3 proposal)
+## PDFs and annotations (PDFs built in phase 2, annotations proposed for phase 3)
 
-- Upload goes through the API, which validates type and size, stores bytes via
-  `filestore`, and records metadata (size, SHA-256, page count) in PostgreSQL.
+- Upload goes through the API, which checks that the file starts with `%PDF-`,
+  stops reading past 20 MB, stores bytes via `filestore`, and records metadata
+  (size, SHA-256) in PostgreSQL. The file is written first and deleted again
+  if the row cannot be inserted.
 - Downloads are served by the API after an authorization check. No public URLs.
 - PDF.js (`pdfjs-dist`) renders pages in the browser with its worker.
 - Annotations are anchored by page number plus rectangles in normalized page

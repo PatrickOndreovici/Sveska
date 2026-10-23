@@ -142,6 +142,113 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/lessons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the user's lessons, newest first. */
+        get: operations["listLessons"];
+        put?: never;
+        /** Create a lesson. */
+        post: operations["createLesson"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lessons/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /** Get a lesson with its PDFs in upload order. */
+        get: operations["getLesson"];
+        /** Replace a lesson's title and description. */
+        put: operations["updateLesson"];
+        post?: never;
+        /** Delete a lesson and every PDF in it. */
+        delete: operations["deleteLesson"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lessons/{id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a PDF into a lesson.
+         * @description The file must start with `%PDF-` and be at most 20 MB; the browser's
+         *     claimed content type is ignored. The title is the file name without
+         *     its `.pdf` extension.
+         */
+        post: operations["uploadDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /** Get a document's details and its lesson. */
+        get: operations["getDocument"];
+        put?: never;
+        post?: never;
+        /** Delete a document. */
+        delete: operations["deleteDocument"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Download the PDF bytes.
+         * @description Sent as an attachment with a sandboxing Content-Security-Policy, so
+         *     opening the URL directly downloads the file rather than rendering it
+         *     on the app's origin. Supports Range requests.
+         */
+        get: operations["downloadDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -252,6 +359,56 @@ export interface components {
             page: number;
             pageSize: number;
         };
+        LessonInput: {
+            /** @example Lekcija 3 – Padeži */
+            title: string;
+            description?: string;
+        };
+        Lesson: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            description: string;
+            /** @description How many PDFs the lesson holds. */
+            documentCount: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        LessonEnvelope: {
+            lesson: components["schemas"]["Lesson"];
+        };
+        LessonList: {
+            lessons: components["schemas"]["Lesson"][];
+        };
+        LessonDetail: {
+            lesson: components["schemas"]["Lesson"];
+            documents: components["schemas"]["Document"][];
+        };
+        Document: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            lessonId: string;
+            /** @description The uploaded file's name without `.pdf`. */
+            title: string;
+            /** Format: int64 */
+            byteSize: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        DocumentEnvelope: {
+            document: components["schemas"]["Document"];
+        };
+        DocumentDetail: {
+            document: components["schemas"]["Document"];
+            lesson: {
+                /** Format: uuid */
+                id: string;
+                title: string;
+            };
+        };
         /** @description Envelope returned by every non-2xx response except /api/health. */
         Error: {
             error: {
@@ -313,6 +470,30 @@ export interface components {
             };
         };
         /**
+         * @description No such lesson among the user's own (code `lesson_not_found`).
+         *     Another user's lesson and a malformed id get the same answer.
+         */
+        LessonNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description No such document among the user's own (code `document_not_found`).
+         *     Another user's document and a malformed id get the same answer.
+         */
+        DocumentNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
          * @description The user already has this word with this translation (code
          *     `duplicate_entry`). The word is compared ignoring case.
          */
@@ -325,7 +506,9 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        Id: string;
+    };
     requestBodies: never;
     headers: {
         /** @description Sets the `sveska_session` cookie. */
@@ -606,6 +789,261 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["ForbiddenOrigin"];
             404: components["responses"]["EntryNotFound"];
+        };
+    };
+    listLessons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every lesson of the user. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    createLesson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LessonInput"];
+            };
+        };
+        responses: {
+            /** @description The new lesson. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    getLesson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lesson and its documents. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonDetail"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["LessonNotFound"];
+        };
+    };
+    updateLesson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LessonInput"];
+            };
+        };
+        responses: {
+            /** @description The updated lesson. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["LessonNotFound"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    deleteLesson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lesson and its documents were deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["LessonNotFound"];
+        };
+    };
+    uploadDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description The PDF. Other form fields are ignored.
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The stored document. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["LessonNotFound"];
+            /**
+             * @description Not multipart (`unsupported_content_type`), unreadable
+             *     (`invalid_multipart`), or `validation_failed` with a `file`
+             *     problem: missing, not a PDF, or over 20 MB.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["DocumentNotFound"];
+        };
+    };
+    deleteDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The document was deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["DocumentNotFound"];
+        };
+    };
+    downloadDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The PDF. */
+            200: {
+                headers: {
+                    /** @description `attachment` with the document title as the file name. */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description The requested byte range of the PDF. */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["DocumentNotFound"];
         };
     };
 }

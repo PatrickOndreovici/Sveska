@@ -15,6 +15,7 @@ type Dependencies struct {
 	DB           Pinger
 	Auth         AuthService
 	Vocabulary   VocabularyService
+	Lessons      LessonService
 	AppOrigin    string
 	CookieSecure bool
 }
@@ -22,12 +23,13 @@ type Dependencies struct {
 type api struct {
 	auth         AuthService
 	vocabulary   VocabularyService
+	lessons      LessonService
 	cookieSecure bool
 }
 
 // NewRouter builds the HTTP handler for the API.
 func NewRouter(deps Dependencies) http.Handler {
-	a := &api{auth: deps.Auth, vocabulary: deps.Vocabulary, cookieSecure: deps.CookieSecure}
+	a := &api{auth: deps.Auth, vocabulary: deps.Vocabulary, lessons: deps.Lessons, cookieSecure: deps.CookieSecure}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -63,6 +65,17 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/vocabulary", a.createVocabularyEntry)
 				r.Put("/vocabulary/{id}", a.updateVocabularyEntry)
 				r.Delete("/vocabulary/{id}", a.deleteVocabularyEntry)
+
+				r.Get("/lessons", a.listLessons)
+				r.Post("/lessons", a.createLesson)
+				r.Get("/lessons/{id}", a.getLesson)
+				r.Put("/lessons/{id}", a.updateLesson)
+				r.Delete("/lessons/{id}", a.deleteLesson)
+				r.Post("/lessons/{id}/documents", a.uploadDocument)
+
+				r.Get("/documents/{id}", a.getDocument)
+				r.Get("/documents/{id}/file", a.downloadDocument)
+				r.Delete("/documents/{id}", a.deleteDocument)
 			})
 		})
 	})
