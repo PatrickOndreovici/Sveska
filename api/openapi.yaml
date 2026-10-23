@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Sveska API
-  version: 0.2.0
+  version: 0.3.0
   description: |
     REST API for the language-learning workspace. This file is the contract:
     endpoints are added here first, then implemented in backend/internal/httpapi
@@ -18,6 +18,8 @@ tags:
     description: Operational endpoints.
   - name: auth
     description: Accounts and sessions.
+  - name: vocabulary
+    description: A user's own list of words. Every entry is private to its owner.
 paths:
   /api/health:
     get:
@@ -137,6 +139,140 @@ paths:
                 $ref: "#/components/schemas/UserEnvelope"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+  /api/vocabulary:
+    get:
+      tags: [vocabulary]
+      operationId: listVocabulary
+      summary: List one page of the user's words.
+      description: |
+        Returns at most `pageSize` entries plus the totals needed for paging.
+        Every parameter is optional; leaving one out applies its default.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: query
+          in: query
+          description: |
+            Case- and diacritic-insensitive substring of the word, its
+            translation, plural, aspect pair or adjective forms, so `cevapi`
+            finds `ćevapi`. Empty means no search.
+          schema:
+            type: string
+            maxLength: 200
+        - name: days
+          in: query
+          description: Only entries added in the last N days. 0 means all time.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 3650
+            default: 0
+        - name: sort
+          in: query
+          description: "`newest` first, or `az` in Serbian alphabetical order (c, č, ć, d, dž, đ, …)."
+          schema:
+            $ref: "#/components/schemas/VocabularySort"
+        - name: page
+          in: query
+          description: 1-based page number. A page past the end returns no entries.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100000
+            default: 1
+      responses:
+        "200":
+          description: One page of entries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VocabularyPage"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/Invalid"
+    post:
+      tags: [vocabulary]
+      operationId: createVocabularyEntry
+      summary: Add a word.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VocabularyEntryInput"
+      responses:
+        "201":
+          description: The word was added.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VocabularyEntryEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/ForbiddenOrigin"
+        "409":
+          $ref: "#/components/responses/DuplicateEntry"
+        "422":
+          $ref: "#/components/responses/Invalid"
+  /api/vocabulary/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [vocabulary]
+      operationId: updateVocabularyEntry
+      summary: Replace a word.
+      description: |
+        Replaces every editable field. A field left out of the body is
+        cleared, the same as sending it empty.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VocabularyEntryInput"
+      responses:
+        "200":
+          description: The updated word.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VocabularyEntryEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/ForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/EntryNotFound"
+        "409":
+          $ref: "#/components/responses/DuplicateEntry"
+        "422":
+          $ref: "#/components/responses/Invalid"
+    delete:
+      tags: [vocabulary]
+      operationId: deleteVocabularyEntry
+      summary: Delete a word.
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: The word was deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/ForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/EntryNotFound"
 components:
   securitySchemes:
     sessionCookie:
@@ -170,6 +306,22 @@ components:
       description: |
         A state-changing request came from a foreign Origin (code `forbidden_origin`).
         Requests without an Origin header (non-browser clients) are allowed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    EntryNotFound:
+      description: |
+        No such entry among the user's own (code `entry_not_found`). Another
+        user's entry and a malformed id get the same answer.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    DuplicateEntry:
+      description: |
+        The user already has this word with this translation (code
+        `duplicate_entry`). The word is compared ignoring case.
       content:
         application/json:
           schema:
@@ -243,6 +395,143 @@ components:
           type: string
         password:
           type: string
+    PartOfSpeech:
+      description: Empty when not set.
+      type: string
+      enum: ["", noun, verb, adjective, other]
+    Gender:
+      description: Nouns only. Empty when not set.
+      type: string
+      enum: ["", masculine, feminine, neuter]
+    Aspect:
+      description: Verbs only. Empty when not set.
+      type: string
+      enum: ["", imperfective, perfective, biaspectual]
+    VocabularySort:
+      type: string
+      enum: [newest, az]
+      default: newest
+    VocabularyEntryInput:
+      description: |
+        The fields a user types in. Grammar fields are only allowed for their
+        part of speech: gender and plural for nouns, aspect and aspect pair
+        for verbs, feminine and neuter forms for adjectives. Text is trimmed.
+      type: object
+      additionalProperties: false
+      required: [term, translation]
+      properties:
+        term:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: kuća
+        translation:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: house
+        notes:
+          type: string
+          maxLength: 2000
+        example:
+          type: string
+          maxLength: 500
+          example: Idem kući.
+        partOfSpeech:
+          $ref: "#/components/schemas/PartOfSpeech"
+        gender:
+          $ref: "#/components/schemas/Gender"
+        plural:
+          type: string
+          maxLength: 200
+          example: kuće
+        aspect:
+          $ref: "#/components/schemas/Aspect"
+        aspectPair:
+          type: string
+          maxLength: 200
+        feminineForm:
+          type: string
+          maxLength: 200
+        neuterForm:
+          type: string
+          maxLength: 200
+    VocabularyEntry:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - term
+        - translation
+        - notes
+        - example
+        - partOfSpeech
+        - gender
+        - plural
+        - aspect
+        - aspectPair
+        - feminineForm
+        - neuterForm
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        term:
+          type: string
+        translation:
+          type: string
+        notes:
+          type: string
+        example:
+          type: string
+        partOfSpeech:
+          $ref: "#/components/schemas/PartOfSpeech"
+        gender:
+          $ref: "#/components/schemas/Gender"
+        plural:
+          type: string
+        aspect:
+          $ref: "#/components/schemas/Aspect"
+        aspectPair:
+          type: string
+        feminineForm:
+          type: string
+        neuterForm:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    VocabularyEntryEnvelope:
+      type: object
+      additionalProperties: false
+      required: [entry]
+      properties:
+        entry:
+          $ref: "#/components/schemas/VocabularyEntry"
+    VocabularyPage:
+      type: object
+      additionalProperties: false
+      required: [entries, total, unfilteredTotal, page, pageSize]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/VocabularyEntry"
+        total:
+          type: integer
+          description: Entries matching the search and time range, across all pages.
+        unfilteredTotal:
+          type: integer
+          description: All of the user's entries, ignoring the search and time range.
+        page:
+          type: integer
+        pageSize:
+          type: integer
     Error:
       description: Envelope returned by every non-2xx response except /api/health.
       type: object

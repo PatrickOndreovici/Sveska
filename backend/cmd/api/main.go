@@ -15,6 +15,7 @@ import (
 	"learning-serbian-platform/backend/internal/database"
 	"learning-serbian-platform/backend/internal/httpapi"
 	"learning-serbian-platform/backend/internal/identity"
+	"learning-serbian-platform/backend/internal/learning"
 	"learning-serbian-platform/backend/internal/store"
 )
 
@@ -40,11 +41,13 @@ func run() error {
 	}
 	defer pool.Close()
 
+	queries := store.New(pool)
 	server := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: httpapi.NewRouter(httpapi.Dependencies{
 			DB:           pool,
-			Auth:         identity.NewService(store.New(pool), cfg.SessionTTL),
+			Auth:         identity.NewService(queries, cfg.SessionTTL),
+			Vocabulary:   learning.NewVocabularyService(queries),
 			AppOrigin:    cfg.AppOrigin,
 			CookieSecure: cfg.CookieSecure,
 		}),
