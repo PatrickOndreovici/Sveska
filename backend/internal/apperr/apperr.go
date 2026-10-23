@@ -17,6 +17,9 @@ const (
 	Unauthenticated Kind = "unauthenticated"
 	// Conflict means the request clashes with existing state, such as a taken email.
 	Conflict Kind = "conflict"
+	// NotFound means the resource does not exist or belongs to someone else.
+	// Services use it for both, so callers cannot probe which ids exist.
+	NotFound Kind = "not_found"
 )
 
 // Error is an expected, user-facing failure.

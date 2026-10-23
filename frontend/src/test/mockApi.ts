@@ -5,26 +5,29 @@ export interface MockResponse {
   body?: unknown;
 }
 
-type Handler = MockResponse | ((requestBody: unknown) => MockResponse);
+export type MockHandler = MockResponse | ((requestBody: unknown, url: URL) => MockResponse);
 
 /**
- * Replaces fetch with a fake API keyed by "METHOD /path". Unknown routes fail
- * the test loudly. GET /api/health answers "ok" unless overridden.
+ * Replaces fetch with a fake API keyed by "METHOD /path". A key with a query
+ * string matches only that exact URL; a key without one matches any query,
+ * and a function handler receives the URL to read it. Unknown routes fail the
+ * test loudly. GET /api/health answers "ok" unless overridden.
  * Returns the spy so tests can inspect calls.
  */
-export function mockApi(routes: Record<string, Handler>) {
-  const all: Record<string, Handler> = {
+export function mockApi(routes: Record<string, MockHandler>) {
+  const all: Record<string, MockHandler> = {
     "GET /api/health": { status: 200, body: { status: "ok", database: "ok" } },
     ...routes,
   };
   return vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const method = init?.method ?? "GET";
     const url = typeof input === "string" ? input : input instanceof URL ? input.pathname : input.url;
-    const handler = all[`${method} ${url}`];
+    const parsedUrl = new URL(url, "http://localhost");
+    const handler = all[`${method} ${url}`] ?? all[`${method} ${parsedUrl.pathname}`];
     if (!handler) return Promise.reject(new Error(`Unexpected request in test: ${method} ${url}`));
 
     const requestBody: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
-    const { status, body } = typeof handler === "function" ? handler(requestBody) : handler;
+    const { status, body } = typeof handler === "function" ? handler(requestBody, parsedUrl) : handler;
     const payload = status === 204 ? null : JSON.stringify(body ?? {});
     return Promise.resolve(new Response(payload, { status, headers: { "Content-Type": "application/json" } }));
   });

@@ -155,6 +155,7 @@ func TestServiceErrorsMapToStatusCodes(t *testing.T) {
 	}{
 		{"validation", apperr.Validation(map[string]string{"email": "Enter a valid email address."}), http.StatusUnprocessableEntity, "validation_failed"},
 		{"conflict", apperr.New(apperr.Conflict, "email_taken", "taken"), http.StatusConflict, "email_taken"},
+		{"not found", apperr.New(apperr.NotFound, "not_found", "missing"), http.StatusNotFound, "not_found"},
 		{"unexpected", errors.New("db exploded"), http.StatusInternalServerError, "internal_error"},
 	}
 	for _, tt := range tests {

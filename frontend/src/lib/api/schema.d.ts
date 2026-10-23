@@ -96,6 +96,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vocabulary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List one page of the user's words.
+         * @description Returns at most `pageSize` entries plus the totals needed for paging.
+         *     Every parameter is optional; leaving one out applies its default.
+         */
+        get: operations["listVocabulary"];
+        put?: never;
+        /** Add a word. */
+        post: operations["createVocabularyEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vocabulary/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace a word.
+         * @description Replaces every editable field. A field left out of the body is
+         *     cleared, the same as sending it empty.
+         */
+        put: operations["updateVocabularyEntry"];
+        post?: never;
+        /** Delete a word. */
+        delete: operations["deleteVocabularyEntry"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -132,6 +178,79 @@ export interface components {
         LogInRequest: {
             email: string;
             password: string;
+        };
+        /**
+         * @description Empty when not set.
+         * @enum {string}
+         */
+        PartOfSpeech: "" | "noun" | "verb" | "adjective" | "other";
+        /**
+         * @description Nouns only. Empty when not set.
+         * @enum {string}
+         */
+        Gender: "" | "masculine" | "feminine" | "neuter";
+        /**
+         * @description Verbs only. Empty when not set.
+         * @enum {string}
+         */
+        Aspect: "" | "imperfective" | "perfective" | "biaspectual";
+        /**
+         * @default newest
+         * @enum {string}
+         */
+        VocabularySort: "newest" | "az";
+        /**
+         * @description The fields a user types in. Grammar fields are only allowed for their
+         *     part of speech: gender and plural for nouns, aspect and aspect pair
+         *     for verbs, feminine and neuter forms for adjectives. Text is trimmed.
+         */
+        VocabularyEntryInput: {
+            /** @example kuća */
+            term: string;
+            /** @example house */
+            translation: string;
+            notes?: string;
+            /** @example Idem kući. */
+            example?: string;
+            partOfSpeech?: components["schemas"]["PartOfSpeech"];
+            gender?: components["schemas"]["Gender"];
+            /** @example kuće */
+            plural?: string;
+            aspect?: components["schemas"]["Aspect"];
+            aspectPair?: string;
+            feminineForm?: string;
+            neuterForm?: string;
+        };
+        VocabularyEntry: {
+            /** Format: uuid */
+            id: string;
+            term: string;
+            translation: string;
+            notes: string;
+            example: string;
+            partOfSpeech: components["schemas"]["PartOfSpeech"];
+            gender: components["schemas"]["Gender"];
+            plural: string;
+            aspect: components["schemas"]["Aspect"];
+            aspectPair: string;
+            feminineForm: string;
+            neuterForm: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        VocabularyEntryEnvelope: {
+            entry: components["schemas"]["VocabularyEntry"];
+        };
+        VocabularyPage: {
+            entries: components["schemas"]["VocabularyEntry"][];
+            /** @description Entries matching the search and time range, across all pages. */
+            total: number;
+            /** @description All of the user's entries, ignoring the search and time range. */
+            unfilteredTotal: number;
+            page: number;
+            pageSize: number;
         };
         /** @description Envelope returned by every non-2xx response except /api/health. */
         Error: {
@@ -174,6 +293,30 @@ export interface components {
          *     Requests without an Origin header (non-browser clients) are allowed.
          */
         ForbiddenOrigin: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description No such entry among the user's own (code `entry_not_found`). Another
+         *     user's entry and a malformed id get the same answer.
+         */
+        EntryNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description The user already has this word with this translation (code
+         *     `duplicate_entry`). The word is compared ignoring case.
+         */
+        DuplicateEntry: {
             headers: {
                 [name: string]: unknown;
             };
@@ -346,6 +489,123 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+        };
+    };
+    listVocabulary: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Case- and diacritic-insensitive substring of the word, its
+                 *     translation, plural, aspect pair or adjective forms, so `cevapi`
+                 *     finds `ćevapi`. Empty means no search.
+                 */
+                query?: string;
+                /** @description Only entries added in the last N days. 0 means all time. */
+                days?: number;
+                /** @description `newest` first, or `az` in Serbian alphabetical order (c, č, ć, d, dž, đ, …). */
+                sort?: components["schemas"]["VocabularySort"];
+                /** @description 1-based page number. A page past the end returns no entries. */
+                page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of entries. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VocabularyPage"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    createVocabularyEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VocabularyEntryInput"];
+            };
+        };
+        responses: {
+            /** @description The word was added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VocabularyEntryEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            409: components["responses"]["DuplicateEntry"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    updateVocabularyEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VocabularyEntryInput"];
+            };
+        };
+        responses: {
+            /** @description The updated word. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VocabularyEntryEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["EntryNotFound"];
+            409: components["responses"]["DuplicateEntry"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    deleteVocabularyEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The word was deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            404: components["responses"]["EntryNotFound"];
         };
     };
 }

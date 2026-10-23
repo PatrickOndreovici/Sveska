@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"learning-serbian-platform/backend/internal/identity"
+	"learning-serbian-platform/backend/internal/learning"
 	"learning-serbian-platform/backend/internal/store"
 	"learning-serbian-platform/backend/internal/testdb"
 )
@@ -33,9 +34,11 @@ type browser struct {
 func newStack(t *testing.T) (*httptest.Server, *pgxpool.Pool) {
 	t.Helper()
 	pool := testdb.New(t)
+	queries := store.New(pool)
 	h := NewRouter(Dependencies{
 		DB:           pool,
-		Auth:         identity.NewService(store.New(pool), time.Hour),
+		Auth:         identity.NewService(queries, time.Hour),
+		Vocabulary:   learning.NewVocabularyService(queries),
 		AppOrigin:    testOrigin,
 		CookieSecure: false, // httptest serves plain HTTP; a Secure cookie would never be sent back
 	})
