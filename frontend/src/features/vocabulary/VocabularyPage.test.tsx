@@ -104,6 +104,17 @@ describe("VocabularyPage", () => {
     expect(screen.getByText("1–2 of 2")).toBeInTheDocument();
   });
 
+  it("links a word saved from a PDF back to its page", async () => {
+    const saved = entry("kući", "home", {
+      source: { annotationId: "a1", documentId: "d1", documentTitle: "Čitanka", pageNumber: 3 },
+    });
+    fakeVocabularyApi([saved, citati]);
+    await renderVocabulary();
+
+    expect(await screen.findByRole("link", { name: "Čitanka, page 3" })).toHaveAttribute("href", "/documents/d1?page=3");
+    expect(screen.getAllByText(/^From/)).toHaveLength(1);
+  });
+
   it("invites the first word when the vocabulary is empty", async () => {
     fakeVocabularyApi([]);
     await renderVocabulary();

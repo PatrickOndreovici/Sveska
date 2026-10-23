@@ -191,17 +191,25 @@ Rules:
 - Primitives live in `components/ui` and are added when a second caller needs
   them, not in advance.
 
-## PDFs and annotations (PDFs built in phase 2, annotations proposed for phase 3)
+## PDFs and annotations (built in phases 2 and 3)
 
 - Upload goes through the API, which checks that the file starts with `%PDF-`,
   stops reading past 20 MB, stores bytes via `filestore`, and records metadata
   (size, SHA-256) in PostgreSQL. The file is written first and deleted again
   if the row cannot be inserted.
 - Downloads are served by the API after an authorization check. No public URLs.
-- PDF.js (`pdfjs-dist`) renders pages in the browser with its worker.
-- Annotations are anchored by page number plus rectangles in normalized page
+- PDF.js (`pdfjs-dist`) renders pages in the browser with its worker, and lays
+  the page's text over the canvas as invisible, selectable spans (its text
+  layer; the CSS for it is copied into `lib/pdf/textLayer.css`).
+- Annotations are highlights on selected text, each with an optional note.
+- An annotation is anchored by page number plus rectangles in normalized page
   coordinates (0–1), with the selected text stored as a quote. This survives
   zoom changes and lets vocabulary entries cite their source.
+  `lib/pdf/selection.ts` turns a browser selection into those rectangles,
+  merging the pieces of each line.
+- Saving a selected word creates its highlight first, then the vocabulary
+  entry citing it (`sourceAnnotationId`). Deleting the highlight keeps the
+  word and clears only the link.
 
 ## Testing
 

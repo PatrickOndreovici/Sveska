@@ -41,6 +41,10 @@
 
   /* Reserved for PDF annotations and vocabulary highlights. */
   --color-highlight: #fbe7a1;
+  /* Highlights drawn on a PDF page, multiplied onto its text. The page stays
+     white in dark mode, so these are not redefined there. */
+  --color-page-highlight: #fbe08a;
+  --color-page-highlight-active: #f5c542;
 
   --color-transparent: transparent;
   --color-current: currentColor;

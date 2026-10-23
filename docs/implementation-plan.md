@@ -22,16 +22,19 @@ light and dark with a Light/Dark/System switch), Sveska logo and favicon, UI pri
 - Exit: a student and a teacher can register and log in; unauthenticated
   requests to protected endpoints return 401; tests cover each rule.
 
-## Phase 2 — Lessons and PDFs
+## Phase 2 — Lessons and PDFs (done)
 
 - `lessons`, `documents`; `filestore` with local disk.
 - Upload with size and type limits, list, download through the API.
 - PDF.js viewer with page navigation and zoom.
+- Lessons, documents and vocabulary are for students only, for now.
 
-## Phase 3 — Annotations and vocabulary
+## Phase 3 — Annotations and vocabulary (done)
 
 - Highlights and notes on PDF pages; vocabulary capture from a selection.
-- Vocabulary list with search and editing.
+  Decided: highlights on selected text with an optional note.
+- Vocabulary list with search and editing (built ahead of phase 2). Words
+  saved from a PDF link back to their page.
 
 ## Phase 4 — Quizzes and progress
 

@@ -6,14 +6,25 @@
  * kilobytes are only downloaded by someone who opens a PDF.
  */
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import "./textLayer.css";
+
+/** The elements one page is drawn into. */
+export interface PageLayers {
+  /** Holds the other layers; sized to the page by renderPage. */
+  page: HTMLElement;
+  canvas: HTMLCanvasElement;
+  /** Receives the page's text as invisible, selectable spans over the canvas. Needs the `textLayer` class. */
+  textLayer: HTMLElement;
+}
 
 export interface PdfDocument {
   readonly pageCount: number;
   /**
-   * Draws one page (1-based) into the canvas. `scale` 1 is the PDF's own
-   * size in CSS pixels; the canvas is sharpened for high-density screens.
+   * Draws one page (1-based) and lays its text over it. `scale` 1 is the
+   * PDF's own size in CSS pixels; the canvas is sharpened for high-density
+   * screens.
    */
-  renderPage(pageNumber: number, canvas: HTMLCanvasElement, scale: number): Task<void>;
+  renderPage(pageNumber: number, layers: PageLayers, scale: number): Task<void>;
   destroy(): void;
 }
 
@@ -38,25 +49,42 @@ export function loadPdf(url: string): Task<PdfDocument> {
 
     return {
       pageCount: doc.numPages,
-      renderPage(pageNumber, canvas, scale) {
+      renderPage(pageNumber, { page: box, canvas, textLayer }, scale) {
         let renderTask: { promise: Promise<void>; cancel(): void } | null = null;
+        let textTask: { render(): Promise<unknown>; cancel(): void } | null = null;
         let pageCancelled = false;
-        const rendered = doc.getPage(pageNumber).then((page) => {
+        const rendered = doc.getPage(pageNumber).then(async (page) => {
           if (pageCancelled) return;
+          const viewport = page.getViewport({ scale });
+          const width = `${String(Math.floor(viewport.width))}px`;
+          const height = `${String(Math.floor(viewport.height))}px`;
+          box.style.width = width;
+          box.style.height = height;
+          // The text layer's CSS sizes and places its spans from these.
+          box.style.setProperty("--scale-factor", String(viewport.scale));
+          box.style.setProperty("--user-unit", String(viewport.userUnit));
+
           const pixelRatio = window.devicePixelRatio || 1;
-          const viewport = page.getViewport({ scale: scale * pixelRatio });
-          canvas.width = Math.floor(viewport.width);
-          canvas.height = Math.floor(viewport.height);
-          canvas.style.width = `${String(Math.floor(viewport.width / pixelRatio))}px`;
-          canvas.style.height = `${String(Math.floor(viewport.height / pixelRatio))}px`;
-          renderTask = page.render({ canvas, viewport });
-          return renderTask.promise;
+          canvas.width = Math.floor(viewport.width * pixelRatio);
+          canvas.height = Math.floor(viewport.height * pixelRatio);
+          canvas.style.width = width;
+          canvas.style.height = height;
+          renderTask = page.render({
+            canvas,
+            viewport,
+            ...(pixelRatio === 1 ? {} : { transform: [pixelRatio, 0, 0, pixelRatio, 0, 0] }),
+          });
+
+          textLayer.replaceChildren();
+          textTask = new pdfjs.TextLayer({ textContentSource: page.streamTextContent(), container: textLayer, viewport });
+          await Promise.all([renderTask.promise, textTask.render()]);
         });
         return {
           promise: rendered,
           cancel() {
             pageCancelled = true;
             renderTask?.cancel();
+            textTask?.cancel();
           },
         };
       },

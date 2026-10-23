@@ -1,16 +1,62 @@
-import { useEffect, useState } from "react";
-import { useParams } from "react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useParams, useSearchParams } from "react-router";
+import { Button } from "../../components/ui/Button";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { TextLink } from "../../components/ui/TextLink";
-import { errorMessage } from "../../lib/api/client";
+import {
+  createAnnotation,
+  deleteAnnotation,
+  listAnnotations,
+  MAX_QUOTE_LENGTH,
+  updateAnnotationNote,
+} from "../../lib/api/annotations";
+import { ApiError, errorMessage } from "../../lib/api/client";
 import { documentFileUrl, getDocument } from "../../lib/api/lessons";
-import type { DocumentDetail } from "../../lib/api/types";
-import { PdfViewer } from "./PdfViewer";
+import type { Annotation, DocumentDetail } from "../../lib/api/types";
+import { createVocabularyEntry } from "../../lib/api/vocabulary";
+import { clearSelection } from "../../lib/pdf/selection";
+import type { EntryFields } from "../vocabulary/entryFields";
+import { AnnotationPanel } from "./AnnotationPanel";
+import { PdfViewer, type TextSelection } from "./PdfViewer";
+import { SaveWordDialog } from "./SaveWordDialog";
 
-/** Reading one PDF: its title, a way back to the lesson, and the viewer. */
+/** The API's limit on rectangles per highlight. */
+const MAX_RECTS = 200;
+
+/** Reading order: by page, then oldest first, as the API lists them. */
+function byReadingOrder(a: Annotation, b: Annotation): number {
+  return a.pageNumber - b.pageNumber || a.createdAt.localeCompare(b.createdAt);
+}
+
+/** ?page=3, or the first page when it is missing or not a page number. */
+function pageFrom(params: URLSearchParams): number {
+  const n = Number(params.get("page"));
+  return Number.isInteger(n) && n >= 1 ? n : 1;
+}
+
+/**
+ * Reading one PDF: the viewer, and beside it the highlights and notes made
+ * on it. Selected text can be highlighted, given a note, or saved as a word.
+ * The page is kept in the URL, so links can open a given page.
+ */
 export function DocumentPage() {
   const { documentId = "" } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const page = pageFrom(searchParams);
   const [detail, setDetail] = useState<DocumentDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [annotations, setAnnotations] = useState<Annotation[] | null>(null);
+  const [annotationsError, setAnnotationsError] = useState<string | null>(null);
+  const [annotationsVersion, setAnnotationsVersion] = useState(0);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Annotation | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [savedWord, setSavedWord] = useState<string | null>(null);
+  const [wordSelection, setWordSelection] = useState<TextSelection | null>(null);
+  // The highlight made for the word being saved, so a retry after a refused
+  // word (a duplicate, say) does not highlight the same text twice.
+  const wordHighlight = useRef<Annotation | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -27,6 +73,107 @@ export function DocumentPage() {
       controller.abort();
     };
   }, [documentId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    listAnnotations(documentId, controller.signal).then(
+      (next) => {
+        setAnnotations(next);
+        setAnnotationsError(null);
+      },
+      (error: unknown) => {
+        if (!controller.signal.aborted) {
+          setAnnotationsError(errorMessage(error, "Could not load the highlights. Try again."));
+        }
+      },
+    );
+    return () => {
+      controller.abort();
+    };
+  }, [documentId, annotationsVersion]);
+
+  const setPage = useCallback(
+    (n: number) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set("page", String(n));
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  function added(annotation: Annotation) {
+    setAnnotations((list) => [...(list ?? []), annotation].sort(byReadingOrder));
+    setActiveId(annotation.id);
+  }
+
+  async function highlight(selection: TextSelection, withNote: boolean) {
+    setActionError(null);
+    setSavedWord(null);
+    try {
+      const annotation = await createAnnotation(documentId, {
+        pageNumber: selection.pageNumber,
+        rects: selection.rects,
+        quote: selection.quote,
+        note: "",
+      });
+      added(annotation);
+      if (withNote) setEditingId(annotation.id);
+      clearSelection();
+    } catch (error) {
+      setActionError(errorMessage(error, "Could not save the highlight. Try again."));
+    }
+  }
+
+  async function saveWord(fields: EntryFields) {
+    if (!wordSelection) return;
+    let source = wordHighlight.current;
+    if (!source) {
+      try {
+        source = await createAnnotation(documentId, {
+          pageNumber: wordSelection.pageNumber,
+          rects: wordSelection.rects,
+          quote: wordSelection.quote,
+          note: "",
+        });
+      } catch (error) {
+        // Its field problems are about the selection, which the word form has
+        // no inputs for, so they become one message for the whole form.
+        if (error instanceof ApiError && Object.keys(error.fields).length > 0) {
+          throw new ApiError(error.status, error.code, "Could not highlight the selected text. Select it again.");
+        }
+        throw error;
+      }
+      wordHighlight.current = source;
+      added(source);
+    }
+    await createVocabularyEntry({ ...fields, sourceAnnotationId: source.id });
+    setSavedWord(fields.term);
+  }
+
+  async function saveNote(id: string, note: string) {
+    const updated = await updateAnnotationNote(id, note);
+    setAnnotations((list) => list?.map((a) => (a.id === id ? updated : a)) ?? null);
+    setEditingId(null);
+  }
+
+  async function confirmDelete() {
+    const target = pendingDelete;
+    setPendingDelete(null);
+    if (!target) return;
+    setActionError(null);
+    try {
+      await deleteAnnotation(target.id);
+      setAnnotations((list) => list?.filter((a) => a.id !== target.id) ?? null);
+      if (activeId === target.id) setActiveId(null);
+    } catch (error) {
+      setActionError(errorMessage(error, "Could not delete the highlight. Try again."));
+    }
+  }
 
   if (loadError) {
     return (
@@ -61,9 +208,125 @@ export function DocumentPage() {
           Download
         </a>
       </header>
-      <div className="mt-6">
-        <PdfViewer url={fileUrl} title={detail.document.title} />
+
+      {actionError && (
+        <p role="alert" className="mt-4 text-sm text-danger">
+          {actionError}
+        </p>
+      )}
+      {/* Always rendered so screen readers announce the text when it appears. */}
+      <p role="status" className="mt-4 text-sm text-success empty:hidden">
+        {savedWord && (
+          <>
+            Saved{" "}
+            <span lang="sr" className="font-medium">
+              {savedWord}
+            </span>{" "}
+            to your <TextLink to="/vocabulary">vocabulary</TextLink>.
+          </>
+        )}
+      </p>
+
+      <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+        <PdfViewer
+          url={fileUrl}
+          title={detail.document.title}
+          page={page}
+          onPageChange={setPage}
+          highlights={(annotations ?? []).map((a) => ({
+            id: a.id,
+            pageNumber: a.pageNumber,
+            rects: a.rects,
+            hasNote: a.note !== "",
+          }))}
+          activeHighlightId={activeId}
+          onHighlightClick={setActiveId}
+          selectionActions={(selection, dismiss) =>
+            selection.quote.length > MAX_QUOTE_LENGTH || selection.rects.length > MAX_RECTS ? (
+              <p className="px-2 py-1 text-sm text-ink-muted">Select a shorter passage to highlight it.</p>
+            ) : (
+              <>
+                <Button
+                  variant="quiet"
+                  size="sm"
+                  onClick={() => {
+                    void highlight(selection, false).then(dismiss);
+                  }}
+                >
+                  Highlight
+                </Button>
+                <Button
+                  variant="quiet"
+                  size="sm"
+                  onClick={() => {
+                    void highlight(selection, true).then(dismiss);
+                  }}
+                >
+                  Add note
+                </Button>
+                <Button
+                  variant="quiet"
+                  size="sm"
+                  onClick={() => {
+                    setActionError(null);
+                    setSavedWord(null);
+                    wordHighlight.current = null;
+                    setWordSelection(selection);
+                    dismiss();
+                  }}
+                >
+                  Save word
+                </Button>
+              </>
+            )
+          }
+        />
+
+        <div className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-auto">
+          <AnnotationPanel
+            annotations={annotations}
+            loadError={annotationsError}
+            onRetry={() => {
+              setAnnotationsVersion((v) => v + 1);
+            }}
+            activeId={activeId}
+            editingId={editingId}
+            onSelect={(a) => {
+              setActiveId(a.id);
+              setPage(a.pageNumber);
+            }}
+            onEditNote={setEditingId}
+            onSaveNote={saveNote}
+            onDelete={setPendingDelete}
+          />
+        </div>
       </div>
+
+      <SaveWordDialog
+        quote={wordSelection?.quote ?? null}
+        onSave={saveWord}
+        onClose={() => {
+          setWordSelection(null);
+          clearSelection();
+        }}
+      />
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Delete this highlight?"
+        confirmLabel="Delete"
+        onConfirm={() => {
+          void confirmDelete();
+        }}
+        onCancel={() => {
+          setPendingDelete(null);
+        }}
+      >
+        <p>
+          {pendingDelete?.note ? "The highlight and its note will be deleted." : "The highlight will be deleted."} Words
+          you saved from it stay in your vocabulary.
+        </p>
+      </ConfirmDialog>
     </div>
   );
 }
