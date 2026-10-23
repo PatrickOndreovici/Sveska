@@ -13,6 +13,7 @@ export interface NavItem {
 export const navigationByRole: Record<Role, readonly NavItem[]> = {
   student: [
     { to: "/", label: "My workspace" },
+    { to: "/lessons", label: "Lessons" },
     { to: "/vocabulary", label: "Vocabulary" },
   ],
   teacher: [{ to: "/", label: "Teaching" }],

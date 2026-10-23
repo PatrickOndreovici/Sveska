@@ -27,6 +27,16 @@ describe("apiRequest", () => {
     });
   });
 
+  it("sends FormData as multipart, leaving the boundary to the browser", async () => {
+    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 201 }));
+    const form = new FormData();
+    form.append("file", new File(["%PDF-"], "a.pdf"));
+    await apiRequest("POST", "/api/lessons/1/documents", form);
+    const init = spy.mock.calls[0]?.[1];
+    expect(init?.body).toBe(form);
+    expect(init?.headers).toEqual({ Accept: "application/json" });
+  });
+
   it("turns the error envelope into an ApiError", async () => {
     respond(422, JSON.stringify({ error: { code: "validation_failed", message: "Invalid.", fields: { email: "Bad." } } }));
     const error = await apiRequest("POST", "/api/auth/signup", {}).catch((e: unknown) => e);

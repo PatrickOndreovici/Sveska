@@ -19,6 +19,7 @@ Every dependency must earn its place. Exact versions are pinned in `go.mod` and
 |---|---|
 | `react`, `react-dom` | Required UI library. |
 | `react-router` | Required routing. |
+| `pdfjs-dist` | Required PDF rendering. Loaded on first use, with its worker, so it stays out of the main bundle. Only `src/lib/pdf/pdf.ts` imports it. |
 
 ### Frontend development
 
@@ -49,9 +50,7 @@ Every dependency must earn its place. Exact versions are pinned in `go.mod` and
 
 ## Planned, added in the phase that needs them
 
-| Package | Phase | Why |
-|---|---|---|
-| `pdfjs-dist` | 2 | Required PDF rendering. |
+None at the moment. A later phase that needs a package lists it here first.
 
 ## Deliberately not used
 

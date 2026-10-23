@@ -112,7 +112,8 @@ function NavItems({ user, large = false, onNavigate }: { user: User; large?: boo
     <NavLink
       key={item.to}
       to={item.to}
-      end
+      // Only the workspace needs an exact match; "Lessons" stays current on a lesson's own page.
+      end={item.to === "/"}
       onClick={onNavigate}
       className={({ isActive }) =>
         cx(
