@@ -182,6 +182,26 @@ func (ns NullVerbAspect) Value() (driver.Value, error) {
 	return string(ns.VerbAspect), nil
 }
 
+type Document struct {
+	ID         string
+	OwnerID    string
+	LessonID   string
+	Title      string
+	StorageKey string
+	ByteSize   int64
+	Sha256     []byte
+	CreatedAt  time.Time
+}
+
+type Lesson struct {
+	ID          string
+	OwnerID     string
+	Title       string
+	Description string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type Session struct {
 	ID        string
 	UserID    string

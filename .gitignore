@@ -8,6 +8,8 @@ frontend/dist/
 
 # Backend
 backend/bin/
+# Uploaded files in local development (FILE_STORAGE_DIR).
+backend/data/
 
 # Tooling
 .playwright-mcp/

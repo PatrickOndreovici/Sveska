@@ -22,6 +22,9 @@ type Config struct {
 	// true; local HTTP development sets COOKIE_SECURE=false.
 	CookieSecure bool
 	SessionTTL   time.Duration
+
+	// FileStorageDir is where uploaded PDFs are kept, created if missing.
+	FileStorageDir string
 }
 
 // Load builds a Config from the given lookup function (normally os.Getenv).
@@ -34,6 +37,7 @@ func Load(getenv func(string) string) (Config, error) {
 		AppOrigin:       getenv("APP_ORIGIN"),
 		CookieSecure:    true,
 		SessionTTL:      30 * 24 * time.Hour,
+		FileStorageDir:  getenv("FILE_STORAGE_DIR"),
 	}
 	if cfg.HTTPAddr == "" {
 		cfg.HTTPAddr = ":8080"
@@ -46,6 +50,9 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if err := validateOrigin(cfg.AppOrigin); err != nil {
 		return Config{}, fmt.Errorf("APP_ORIGIN: %w", err)
+	}
+	if cfg.FileStorageDir == "" {
+		return Config{}, errors.New("FILE_STORAGE_DIR is required, e.g. ./data/files")
 	}
 	if raw := getenv("COOKIE_SECURE"); raw != "" {
 		secure, err := strconv.ParseBool(raw)

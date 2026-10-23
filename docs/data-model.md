@@ -30,6 +30,13 @@ PostgreSQL enum types.
 | `quiz_attempt_answers` | attempt_id → quiz_attempts, question_id → quiz_questions, response `jsonb`, is_correct | PK (attempt_id, question_id). |
 | `lesson_progress` | user_id → users, lesson_id → lessons, status (not_started, in_progress, completed), updated_at | PK (user_id, lesson_id). Other progress figures are derived from attempts and vocabulary, not stored. |
 
+> **Phase 2 as built:** `lessons` and `documents` are migrated without
+> `position`, `archived_at` and `page_count`, which wait for a feature that
+> needs them. `documents.lesson_id` is NOT NULL for now (teacher material
+> without a lesson comes with assignments), and the composite foreign key
+> `(lesson_id, owner_id) → lessons (id, owner_id)` makes the database refuse
+> a document whose owner differs from its lesson's.
+
 ## Teacher relationship
 
 | Table | Columns | Notes |

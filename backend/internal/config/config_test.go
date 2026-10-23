@@ -11,9 +11,24 @@ func lookup(values map[string]string) func(string) string {
 
 func required() map[string]string {
 	return map[string]string{
-		"DATABASE_URL": "postgres://example",
-		"APP_ORIGIN":   "http://localhost:5180",
+		"DATABASE_URL":     "postgres://example",
+		"APP_ORIGIN":       "http://localhost:5180",
+		"FILE_STORAGE_DIR": "/var/lib/sveska/files",
 	}
+}
+
+// without returns the required values minus one, so each bad-input case
+// fails for its own reason only.
+func without(key string) map[string]string {
+	env := required()
+	delete(env, key)
+	return env
+}
+
+func with(key, value string) map[string]string {
+	env := required()
+	env[key] = value
+	return env
 }
 
 func TestLoadAppliesDefaults(t *testing.T) {
@@ -53,11 +68,12 @@ func TestLoadRejectsBadInput(t *testing.T) {
 		name string
 		env  map[string]string
 	}{
-		{"missing database url", map[string]string{"APP_ORIGIN": "http://localhost:5180"}},
-		{"missing app origin", map[string]string{"DATABASE_URL": "postgres://example"}},
-		{"origin with path", map[string]string{"DATABASE_URL": "postgres://example", "APP_ORIGIN": "http://localhost:5180/app"}},
-		{"origin without scheme", map[string]string{"DATABASE_URL": "postgres://example", "APP_ORIGIN": "localhost:5180"}},
-		{"bad cookie flag", map[string]string{"DATABASE_URL": "postgres://example", "APP_ORIGIN": "http://localhost:5180", "COOKIE_SECURE": "maybe"}},
+		{"missing database url", without("DATABASE_URL")},
+		{"missing app origin", without("APP_ORIGIN")},
+		{"missing file storage dir", without("FILE_STORAGE_DIR")},
+		{"origin with path", with("APP_ORIGIN", "http://localhost:5180/app")},
+		{"origin without scheme", with("APP_ORIGIN", "localhost:5180")},
+		{"bad cookie flag", with("COOKIE_SECURE", "maybe")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

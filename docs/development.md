@@ -50,6 +50,10 @@ make db-reset                   # DELETES local data, recreates and migrates
 
 - New settings in phase 1: `APP_ORIGIN`, `COOKIE_SECURE`, `POSTGRES_TEST_DB`
   and `TEST_DATABASE_URL`. Copy them from `.env.example` into an existing `.env`.
+- New setting in phase 2: `FILE_STORAGE_DIR`, where uploaded PDFs are kept.
+  The API refuses to start without it; `./data/files` resolves to
+  `backend/data/files`, which git ignores. Integration tests use a temporary
+  directory instead.
 - `COOKIE_SECURE=false` is for local HTTP only. Any deployed environment must
   leave it unset (the default is `true`).
 - PostgreSQL 18 stores data under `/var/lib/postgresql/18`; the Compose volume
