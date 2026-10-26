@@ -61,17 +61,23 @@ export const anonymousMe: MockResponse = {
 
 /**
  * A dashboard for Friday 23 October 2026 with nothing done; days lists the
- * ones with activity, and overrides replaces anything else.
+ * ones with activity (reviews 0 unless given), and overrides replaces
+ * anything else.
  */
-export function dashboard(days: ActivityDay[] = [], overrides: Partial<Dashboard> = {}): Dashboard {
+export function dashboard(
+  days: (Omit<ActivityDay, "reviews"> & { reviews?: number })[] = [],
+  overrides: Partial<Dashboard> = {},
+): Dashboard {
   const today = Date.parse("2026-10-23T00:00:00Z");
   const activity = Array.from({ length: 84 }, (_, i) => {
     const date = new Date(today - (83 - i) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    return days.find((d) => d.date === date) ?? { date, words: 0, highlights: 0, pages: 0 };
+    const day = days.find((d) => d.date === date);
+    return { date, words: 0, highlights: 0, pages: 0, reviews: 0, ...day };
   });
   return {
     today: "2026-10-23",
     totals: { words: 0, wordsThisWeek: 0, lessons: 0, documents: 0, highlights: 0, notes: 0 },
+    review: { due: 0, new: 0 },
     streak: 0,
     activity,
     recentWords: [],

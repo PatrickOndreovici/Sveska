@@ -22,11 +22,17 @@ type totalsResponse struct {
 	Notes         int `json:"notes"`
 }
 
+type reviewCountsResponse struct {
+	Due int `json:"due"`
+	New int `json:"new"`
+}
+
 type activityDayResponse struct {
 	Date       string `json:"date"`
 	Words      int    `json:"words"`
 	Highlights int    `json:"highlights"`
 	Pages      int    `json:"pages"`
+	Reviews    int    `json:"reviews"`
 }
 
 type recentWordResponse struct {
@@ -47,6 +53,7 @@ type recentDocumentResponse struct {
 type dashboardResponse struct {
 	Today           string                   `json:"today"`
 	Totals          totalsResponse           `json:"totals"`
+	Review          reviewCountsResponse     `json:"review"`
 	Streak          int                      `json:"streak"`
 	Activity        []activityDayResponse    `json:"activity"`
 	RecentWords     []recentWordResponse     `json:"recentWords"`
@@ -66,6 +73,7 @@ func (a *api) getDashboard(w http.ResponseWriter, r *http.Request) {
 			Words: t.Words, WordsThisWeek: t.WordsThisWeek, Lessons: t.Lessons,
 			Documents: t.Documents, Highlights: t.Highlights, Notes: t.Notes,
 		},
+		Review:          reviewCountsResponse(d.Review),
 		Streak:          d.Streak,
 		Activity:        make([]activityDayResponse, 0, len(d.Activity)),
 		RecentWords:     make([]recentWordResponse, 0, len(d.RecentWords)),

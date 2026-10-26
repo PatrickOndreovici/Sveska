@@ -3,11 +3,9 @@ package learning
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"time"
 
 	"learning-serbian-platform/backend/internal/access"
-	"learning-serbian-platform/backend/internal/apperr"
 	"learning-serbian-platform/backend/internal/store"
 )
 
@@ -17,6 +15,7 @@ import (
 type Dashboard struct {
 	Today           string
 	Totals          Totals
+	Review          ReviewCounts
 	Streak          int              // days in a row with something done, see streak
 	Activity        []ActivityDay    // the last ActivityDays days, oldest first, today last
 	RecentWords     []RecentWord     // newest first
@@ -32,13 +31,26 @@ type Totals struct {
 	Notes         int // highlights with a note
 }
 
+// ReviewCounts is what the student has to review today, as in ReviewQueue.
+type ReviewCounts struct {
+	Due int
+	New int
+}
+
 // ActivityDay is what a student did on one day. Pages counts the PDF pages
-// they drew or wrote on, each once however much they did on it.
+// they drew or wrote on, each once however much they did on it; Reviews
+// counts flashcard answers.
 type ActivityDay struct {
 	Date       string
 	Words      int
 	Highlights int
 	Pages      int
+	Reviews    int
+}
+
+// total is everything done on the day.
+func (d ActivityDay) total() int {
+	return d.Words + d.Highlights + d.Pages + d.Reviews
 }
 
 type RecentWord struct {
@@ -74,6 +86,7 @@ type DashboardStore interface {
 	ListActivityDays(ctx context.Context, arg store.ListActivityDaysParams) ([]store.ListActivityDaysRow, error)
 	ListRecentVocabularyEntries(ctx context.Context, arg store.ListRecentVocabularyEntriesParams) ([]store.ListRecentVocabularyEntriesRow, error)
 	ListRecentDocuments(ctx context.Context, arg store.ListRecentDocumentsParams) ([]store.ListRecentDocumentsRow, error)
+	GetReviewCounts(ctx context.Context, arg store.GetReviewCountsParams) (store.GetReviewCountsRow, error)
 }
 
 // DashboardService builds a student's dashboard.
@@ -86,10 +99,6 @@ func NewDashboardService(s DashboardStore) *DashboardService {
 	return &DashboardService{store: s, now: time.Now}
 }
 
-// timeZoneName is the shape of an IANA name such as Europe/Belgrade or
-// America/Argentina/Buenos_Aires.
-var timeZoneName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)*$`)
-
 // Get returns the student's dashboard, counting days in timeZone (an IANA
 // name; empty means UTC), so that a day starts at the student's midnight.
 func (s *DashboardService) Get(ctx context.Context, timeZone string) (Dashboard, error) {
@@ -97,19 +106,12 @@ func (s *DashboardService) Get(ctx context.Context, timeZone string) (Dashboard,
 	if err != nil {
 		return Dashboard{}, err
 	}
-	if timeZone == "" {
-		timeZone = "UTC"
-	}
-	loc, err := time.LoadLocation(timeZone)
-	if timeZone == "Local" || !timeZoneName.MatchString(timeZone) || err != nil {
-		return Dashboard{}, apperr.Validation(map[string]string{
-			"timeZone": "Use a time zone name such as Europe/Belgrade.",
-		})
+	day, err := currentDay(timeZone, s.now())
+	if err != nil {
+		return Dashboard{}, err
 	}
 	ownerID := actor.User.ID
-
-	now := s.now().In(loc)
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	today := day.start
 
 	totals, err := s.store.GetDashboardTotals(ctx, ownerID)
 	if err != nil {
@@ -118,7 +120,7 @@ func (s *DashboardService) Get(ctx context.Context, timeZone string) (Dashboard,
 	dayRows, err := s.store.ListActivityDays(ctx, store.ListActivityDaysParams{
 		OwnerID:  ownerID,
 		Since:    today.AddDate(0, 0, -(streakDays - 1)),
-		TimeZone: timeZone,
+		TimeZone: day.timeZone,
 	})
 	if err != nil {
 		return Dashboard{}, fmt.Errorf("list activity days: %w", err)
@@ -137,10 +139,18 @@ func (s *DashboardService) Get(ctx context.Context, timeZone string) (Dashboard,
 	if err != nil {
 		return Dashboard{}, fmt.Errorf("list recent documents: %w", err)
 	}
+	reviewCounts, err := s.store.GetReviewCounts(ctx, store.GetReviewCountsParams{
+		OwnerID: ownerID, Today: day.date(), DayStart: day.start,
+	})
+	if err != nil {
+		return Dashboard{}, fmt.Errorf("get review counts: %w", err)
+	}
 
 	byDate := make(map[string]ActivityDay, len(dayRows))
 	for _, r := range dayRows {
-		byDate[r.Day] = ActivityDay{Date: r.Day, Words: int(r.Words), Highlights: int(r.Highlights), Pages: int(r.Pages)}
+		byDate[r.Day] = ActivityDay{
+			Date: r.Day, Words: int(r.Words), Highlights: int(r.Highlights), Pages: int(r.Pages), Reviews: int(r.Reviews),
+		}
 	}
 	activity := make([]ActivityDay, ActivityDays)
 	for i := range activity {
@@ -163,6 +173,7 @@ func (s *DashboardService) Get(ctx context.Context, timeZone string) (Dashboard,
 			Highlights:    int(totals.Highlights),
 			Notes:         int(totals.Notes),
 		},
+		Review:          ReviewCounts{Due: int(reviewCounts.Due), New: newWordsLeft(reviewCounts)},
 		Streak:          streak(byDate, today),
 		Activity:        activity,
 		RecentWords:     make([]RecentWord, 0, len(wordRows)),
@@ -187,8 +198,7 @@ func (s *DashboardService) Get(ctx context.Context, timeZone string) (Dashboard,
 // today: the day is not over yet.
 func streak(days map[string]ActivityDay, today time.Time) int {
 	active := func(t time.Time) bool {
-		d := days[t.Format(time.DateOnly)]
-		return d.Words+d.Highlights+d.Pages > 0
+		return days[t.Format(time.DateOnly)].total() > 0
 	}
 	day := today
 	if !active(day) {

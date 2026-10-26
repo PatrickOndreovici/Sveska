@@ -271,7 +271,7 @@ func (s *VocabularyService) List(ctx context.Context, in ListEntriesInput) (Entr
 	for i, row := range rows {
 		entries[i] = entryFromRow(row)
 	}
-	if err := s.addSources(ctx, actor, entries); err != nil {
+	if err := addSources(ctx, s.store, actor.User.ID, entries); err != nil {
 		return EntryPage{}, err
 	}
 	return EntryPage{
@@ -322,15 +322,20 @@ func (s *VocabularyService) Update(ctx context.Context, id string, in EntryField
 		return VocabularyEntry{}, fmt.Errorf("update vocabulary entry %s: %w", id, err)
 	}
 	entries := []VocabularyEntry{entryFromRow(row)}
-	if err := s.addSources(ctx, actor, entries); err != nil {
+	if err := addSources(ctx, s.store, actor.User.ID, entries); err != nil {
 		return VocabularyEntry{}, err
 	}
 	return entries[0], nil
 }
 
-// addSources fills in Source for the entries saved from a highlight. Most
-// words are typed in, so the query only runs when one of them cites one.
-func (s *VocabularyService) addSources(ctx context.Context, actor access.Actor, entries []VocabularyEntry) error {
+// entrySourceLister is the query addSources needs.
+type entrySourceLister interface {
+	ListEntrySources(ctx context.Context, arg store.ListEntrySourcesParams) ([]store.ListEntrySourcesRow, error)
+}
+
+// addSources fills in Source for the owner's entries saved from a highlight.
+// Most words are typed in, so the query only runs when one of them cites one.
+func addSources(ctx context.Context, s entrySourceLister, ownerID string, entries []VocabularyEntry) error {
 	var ids []string
 	for _, e := range entries {
 		if e.Source != nil {
@@ -340,7 +345,7 @@ func (s *VocabularyService) addSources(ctx context.Context, actor access.Actor, 
 	if len(ids) == 0 {
 		return nil
 	}
-	rows, err := s.store.ListEntrySources(ctx, store.ListEntrySourcesParams{OwnerID: actor.User.ID, EntryIds: ids})
+	rows, err := s.ListEntrySources(ctx, store.ListEntrySourcesParams{OwnerID: ownerID, EntryIds: ids})
 	if err != nil {
 		return fmt.Errorf("list entry sources: %w", err)
 	}

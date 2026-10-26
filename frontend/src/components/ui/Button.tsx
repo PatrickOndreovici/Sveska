@@ -22,18 +22,17 @@ export type ButtonProps = ComponentProps<"button"> & {
   size?: Size;
 };
 
-export function Button({ variant = "primary", size = "md", className, type = "button", ...rest }: ButtonProps) {
-  return (
-    <button
-      type={type}
-      className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-sm font-medium whitespace-nowrap transition-colors",
-        "disabled:cursor-not-allowed disabled:opacity-50",
-        variantClasses[variant],
-        sizeClasses[size],
-        className,
-      )}
-      {...rest}
-    />
+/** The button's look, also for a link that should read as a button. */
+export function buttonClasses(variant: Variant = "primary", size: Size = "md", className?: string): string {
+  return cx(
+    "inline-flex items-center justify-center gap-2 rounded-sm font-medium whitespace-nowrap transition-colors",
+    "disabled:cursor-not-allowed disabled:opacity-50",
+    variantClasses[variant],
+    sizeClasses[size],
+    className,
   );
+}
+
+export function Button({ variant = "primary", size = "md", className, type = "button", ...rest }: ButtonProps) {
+  return <button type={type} className={buttonClasses(variant, size, className)} {...rest} />;
 }

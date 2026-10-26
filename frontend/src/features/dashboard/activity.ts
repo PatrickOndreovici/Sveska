@@ -2,9 +2,9 @@ import type { ActivityDay } from "../../lib/api/types";
 
 const DAY = 24 * 60 * 60 * 1000;
 
-/** Everything done on a day: words added, highlights made and pages worked on. */
+/** Everything done on a day: words added, highlights made, pages worked on and flashcards answered. */
 export function dayTotal(day: ActivityDay): number {
-  return day.words + day.highlights + day.pages;
+  return day.words + day.highlights + day.pages + day.reviews;
 }
 
 /** The calendar's colour steps, by how much was done on a day. */
@@ -57,7 +57,7 @@ export function calendarWeeks(activity: readonly ActivityDay[], today: string, c
       const time = first + (w * 7 + d) * DAY;
       if (time > todayTime) return null;
       const date = formatDate(time);
-      return byDate.get(date) ?? { date, words: 0, highlights: 0, pages: 0 };
+      return byDate.get(date) ?? { date, words: 0, highlights: 0, pages: 0, reviews: 0 };
     }),
   }));
 }
@@ -90,12 +90,13 @@ export function formatDay(date: string): string {
   return dayFormat.format(new Date(parseDate(date)));
 }
 
-/** "2 words, 1 highlight, 3 pages", leaving out what is zero. */
+/** "2 words, 1 highlight, 3 pages written on, 12 cards reviewed", leaving out what is zero. */
 export function describeDay(day: ActivityDay): string {
   const parts = [
     count(day.words, "word", "words"),
     count(day.highlights, "highlight", "highlights"),
     count(day.pages, "page written on", "pages written on"),
+    count(day.reviews, "card reviewed", "cards reviewed"),
   ].filter((p) => p !== null);
   return parts.length > 0 ? parts.join(", ") : "Nothing done";
 }

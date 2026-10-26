@@ -54,6 +54,7 @@ func newStackWithFiles(t *testing.T) (*httptest.Server, *pgxpool.Pool, string) {
 		Profile:      identity.NewProfileService(queries),
 		Dashboard:    learning.NewDashboardService(queries),
 		Vocabulary:   learning.NewVocabularyService(queries),
+		Reviews:      learning.NewReviewService(queries),
 		Lessons:      learning.NewLessonService(queries, files),
 		Annotations:  learning.NewAnnotationService(queries),
 		Drawings:     learning.NewDrawingService(queries),

@@ -23,8 +23,9 @@ func (f *fakeDashboard) Get(_ context.Context, timeZone string) (learning.Dashbo
 	return learning.Dashboard{
 		Today:    "2026-10-23",
 		Totals:   learning.Totals{Words: 40, WordsThisWeek: 5, Lessons: 3, Documents: 5, Highlights: 12, Notes: 4},
+		Review:   learning.ReviewCounts{Due: 7, New: 5},
 		Streak:   2,
-		Activity: []learning.ActivityDay{{Date: "2026-10-22", Words: 1}, {Date: "2026-10-23", Highlights: 2, Pages: 1}},
+		Activity: []learning.ActivityDay{{Date: "2026-10-22", Words: 1}, {Date: "2026-10-23", Highlights: 2, Pages: 1, Reviews: 9}},
 		RecentWords: []learning.RecentWord{
 			{ID: entryID, Term: "kuća", Translation: "house", CreatedAt: testTime},
 		},
@@ -65,10 +66,11 @@ func TestDashboardResponse(t *testing.T) {
 		"totals": map[string]any{
 			"words": 40.0, "wordsThisWeek": 5.0, "lessons": 3.0, "documents": 5.0, "highlights": 12.0, "notes": 4.0,
 		},
+		"review": map[string]any{"due": 7.0, "new": 5.0},
 		"streak": 2.0,
 		"activity": []any{
-			map[string]any{"date": "2026-10-22", "words": 1.0, "highlights": 0.0, "pages": 0.0},
-			map[string]any{"date": "2026-10-23", "words": 0.0, "highlights": 2.0, "pages": 1.0},
+			map[string]any{"date": "2026-10-22", "words": 1.0, "highlights": 0.0, "pages": 0.0, "reviews": 0.0},
+			map[string]any{"date": "2026-10-23", "words": 0.0, "highlights": 2.0, "pages": 1.0, "reviews": 9.0},
 		},
 		"recentWords": []any{
 			map[string]any{"id": entryID, "term": "kuća", "translation": "house", "createdAt": "2026-10-23T12:00:00Z"},

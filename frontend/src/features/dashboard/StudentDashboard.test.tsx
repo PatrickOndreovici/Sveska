@@ -9,10 +9,11 @@ const busy = dashboard(
   [
     { date: "2026-10-21", words: 2, highlights: 0, pages: 0 },
     { date: "2026-10-22", words: 0, highlights: 1, pages: 0 },
-    { date: "2026-10-23", words: 4, highlights: 3, pages: 5 },
+    { date: "2026-10-23", words: 4, highlights: 3, pages: 5, reviews: 12 },
   ],
   {
     totals: { words: 1284, wordsThisWeek: 6, lessons: 3, documents: 7, highlights: 40, notes: 1 },
+    review: { due: 7, new: 5 },
     streak: 3,
     recentWords: [
       { id: "w2", term: "voda", translation: "water", createdAt: "2026-10-23T09:00:00Z" },
@@ -85,6 +86,30 @@ describe("StudentDashboard", () => {
     expect(await screen.findByText(text)).toBeInTheDocument();
   });
 
+  it("invites the student to review the words due today", async () => {
+    renderDashboard();
+    const section = await screen.findByRole("region", { name: "Flashcards" });
+
+    expect(section).toHaveTextContent("12 words to review today: 7 due and 5 new.");
+    expect(within(section).getByRole("link", { name: "Start review" })).toHaveAttribute("href", "/review");
+  });
+
+  it.each([
+    [{ due: 3, new: 0 }, "3 words to review today: 3 due."],
+    [{ due: 0, new: 1 }, "1 word to review today: 1 new."],
+  ])("counts only what there is to review (%o)", async (review, text) => {
+    renderDashboard(dashboard([], { totals: { ...busy.totals }, review }));
+    expect(await screen.findByRole("region", { name: "Flashcards" })).toHaveTextContent(text);
+  });
+
+  it("says when every word is reviewed for today", async () => {
+    renderDashboard(dashboard([], { totals: { ...busy.totals }, review: { due: 0, new: 0 } }));
+    const section = await screen.findByRole("region", { name: "Flashcards" });
+
+    expect(section).toHaveTextContent("All your words are reviewed for today.");
+    expect(within(section).queryByRole("link")).not.toBeInTheDocument();
+  });
+
   it("links each recent PDF to the page last worked on", async () => {
     renderDashboard();
     const section = await screen.findByRole("region", { name: "Pick up where you left off" });
@@ -111,6 +136,8 @@ describe("StudentDashboard", () => {
     await screen.findByText("Day streak");
 
     expect(screen.getByText("Nothing done in the last 12 weeks yet.")).toBeInTheDocument();
+    // No words, so no flashcards yet.
+    expect(screen.queryByRole("region", { name: "Flashcards" })).not.toBeInTheDocument();
     const docs = screen.getByRole("region", { name: "Pick up where you left off" });
     expect(within(docs).getByRole("link", { name: "Upload a PDF to a lesson" })).toHaveAttribute("href", "/lessons");
     const words = screen.getByRole("region", { name: "Newest words" });
@@ -162,7 +189,7 @@ describe("ActivityCalendar", () => {
 
     await userEvent.hover(day);
     const tooltip = screen.getByRole("tooltip");
-    expect(tooltip).toHaveTextContent("4 words, 3 highlights, 5 pages written on");
+    expect(tooltip).toHaveTextContent("4 words, 3 highlights, 5 pages written on, 12 cards reviewed");
     expect(tooltip).toHaveTextContent("Fri 23 Oct");
 
     await userEvent.unhover(calendar);
@@ -175,9 +202,9 @@ describe("ActivityCalendar", () => {
 
     const rows = within(screen.getByRole("table")).getAllByRole("row").slice(1);
     expect(rows.map((r) => within(r).getAllByRole("cell").map((c) => c.textContent))).toEqual([
-      ["4", "3", "5"],
-      ["0", "1", "0"],
-      ["2", "0", "0"],
+      ["4", "3", "5", "12"],
+      ["0", "1", "0", "0"],
+      ["2", "0", "0", "0"],
     ]);
     expect(within(rows[0] as HTMLElement).getByRole("rowheader")).toHaveTextContent("Fri 23 Oct");
   });

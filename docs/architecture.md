@@ -232,12 +232,33 @@ Rules:
   the last twelve weeks and where they left off. `GET /api/dashboard` builds
   it from the study tables (`learning.DashboardService`) in the time zone the
   browser sends, so days start at the student's midnight.
-- A day counts as active when the student added a word, highlighted text or
-  wrote on a page. The streak counts active days in a row up to today, or up
+- A day counts as active when the student added a word, highlighted text,
+  wrote on a page or answered a flashcard. The streak counts active days in a row up to today, or up
   to yesterday while nothing is done yet today.
 - The calendar is a picture only; the summary line and a table carry the
   same numbers. Its colours are one blue ramp, checked as an ordered ramp
   against the card in both themes (`--color-activity-*`).
+
+## Flashcards
+
+- Every word in a student's vocabulary is a flashcard, Serbian side first.
+  `GET /api/review-queue` returns today's cards: words due, longest overdue
+  first, then up to 20 new words a day, oldest first, at most 50 at a time.
+  `POST /api/vocabulary/{id}/reviews` records an answer (again, hard, good,
+  easy) and schedules the word's next review (`learning.ReviewService`).
+- The schedule is a simplified SM-2, as Anki uses it, in whole days: a word
+  not yet learned comes back in 1, 2 or 4 days; after that each answer
+  stretches the interval by 1.2 (hard), the word's ease (good, 2.5 to start)
+  or the ease and 1.3 (easy), up to a year. "Again" brings the word back the
+  same day and starts it over. The API sends each card's next intervals, so
+  the buttons show them without the frontend knowing the rules.
+- Days are dates in the student's time zone, as on the dashboard. The
+  schedule and the logged answer are saved in one statement, and only if the
+  schedule is still the one that was read, so an answer sent twice (from two
+  tabs) counts once; the second gets 409 `review_conflict`.
+- The review page (`/review`) shows the cards of one queue in order and asks
+  for the queue again once they are answered, which brings back the words
+  answered "again". Space shows the answer and 1–4 answer it.
 
 ## Testing
 

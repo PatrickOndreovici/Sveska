@@ -1,15 +1,15 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import { Button } from "../../components/ui/Button";
+import { Button, buttonClasses } from "../../components/ui/Button";
 import { TextLink } from "../../components/ui/TextLink";
 import { errorMessage } from "../../lib/api/client";
 import { getDashboard, localTimeZone } from "../../lib/api/dashboard";
-import type { Dashboard, RecentDocument, RecentWord } from "../../lib/api/types";
+import type { Dashboard, RecentDocument, RecentWord, ReviewCounts } from "../../lib/api/types";
 import { formatDate } from "../lessons/format";
 import { ActivityCalendar } from "./ActivityCalendar";
 import { dayTotal, previousDay } from "./activity";
 
-/** A student's overview: totals, activity by day, and where to pick up. */
+/** A student's overview: words to review, totals, activity by day, and where to pick up. */
 export function StudentDashboard() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -60,6 +60,8 @@ export function StudentDashboard() {
 
   return (
     <div className="mt-10 grid gap-8">
+      {totals.words > 0 && <ReviewPrompt review={dashboard.review} />}
+
       <section aria-labelledby="totals-heading">
         <h2 id="totals-heading" className="sr-only">
           Your totals
@@ -109,6 +111,34 @@ export function StudentDashboard() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** How many words are waiting as flashcards today, with the way in. */
+function ReviewPrompt({ review }: { review: ReviewCounts }) {
+  const total = review.due + review.new;
+  const parts = [review.due > 0 && `${String(review.due)} due`, review.new > 0 && `${String(review.new)} new`];
+  return (
+    <section
+      aria-labelledby="review-heading"
+      className="flex flex-wrap items-center justify-between gap-4 rounded-md border border-rule bg-paper-raised p-4 sm:p-5"
+    >
+      <div>
+        <h2 id="review-heading" className="font-serif text-xl text-ink">
+          Flashcards
+        </h2>
+        <p className="mt-1 text-sm text-ink-muted">
+          {total === 0
+            ? "All your words are reviewed for today."
+            : `${pluralWords(total)} to review today: ${parts.filter(Boolean).join(" and ")}.`}
+        </p>
+      </div>
+      {total > 0 && (
+        <Link to="/review" className={buttonClasses()}>
+          Start review
+        </Link>
+      )}
+    </section>
   );
 }
 

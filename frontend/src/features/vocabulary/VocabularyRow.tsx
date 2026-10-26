@@ -5,6 +5,7 @@ import type { VocabularyEntry } from "../../lib/api/types";
 import {
   aspectAbbreviations,
   aspectLabels,
+  formsOf,
   genderAbbreviations,
   genderLabels,
   readEntryFields,
@@ -23,7 +24,7 @@ type VocabularyRowProps = {
 };
 
 /** The dictionary-style tag after the word: gender for nouns, aspect for verbs. */
-function GrammarTag({ entry }: { entry: EntryFields }) {
+export function GrammarTag({ entry }: { entry: EntryFields }) {
   if (entry.gender) {
     return (
       <abbr title={genderLabels[entry.gender]} className="text-sm text-ink-subtle italic no-underline">
@@ -38,15 +39,6 @@ function GrammarTag({ entry }: { entry: EntryFields }) {
       </abbr>
     );
   }
-  return null;
-}
-
-/** The other forms of the word: plural, aspect pair, or adjective endings. */
-function formsOf(entry: EntryFields): string | null {
-  if (entry.plural) return `pl. ${entry.plural}`;
-  if (entry.aspectPair) return `↔ ${entry.aspectPair}`;
-  const adjectiveForms = [entry.feminineForm, entry.neuterForm].filter(Boolean);
-  if (adjectiveForms.length > 0) return [entry.term, ...adjectiveForms].join(", ");
   return null;
 }
 

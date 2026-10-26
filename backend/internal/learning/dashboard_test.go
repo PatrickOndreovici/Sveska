@@ -16,11 +16,13 @@ type fakeDashboardStore struct {
 	days      []store.ListActivityDaysRow
 	words     []store.ListRecentVocabularyEntriesRow
 	documents []store.ListRecentDocumentsRow
+	reviews   store.GetReviewCountsRow
 
 	ownerIDs     []string
 	activityArgs store.ListActivityDaysParams
 	wordLimit    int32
 	docLimit     int32
+	reviewArgs   store.GetReviewCountsParams
 }
 
 func (f *fakeDashboardStore) GetDashboardTotals(_ context.Context, ownerID string) (store.GetDashboardTotalsRow, error) {
@@ -44,6 +46,12 @@ func (f *fakeDashboardStore) ListRecentDocuments(_ context.Context, arg store.Li
 	f.ownerIDs = append(f.ownerIDs, arg.OwnerID)
 	f.docLimit = arg.RowLimit
 	return f.documents, nil
+}
+
+func (f *fakeDashboardStore) GetReviewCounts(_ context.Context, arg store.GetReviewCountsParams) (store.GetReviewCountsRow, error) {
+	f.ownerIDs = append(f.ownerIDs, arg.OwnerID)
+	f.reviewArgs = arg
+	return f.reviews, nil
 }
 
 // newDashboard is a service whose clock reads 23 October 2026, 22:30 UTC,
@@ -103,7 +111,7 @@ func TestDashboardFillsEveryDayOfTheChart(t *testing.T) {
 	f := &fakeDashboardStore{days: []store.ListActivityDaysRow{
 		{Day: "2026-07-31", Words: 9}, // before the chart: only the streak looks this far
 		{Day: "2026-10-20", Words: 2, Highlights: 1},
-		{Day: "2026-10-23", Pages: 3},
+		{Day: "2026-10-23", Pages: 3, Reviews: 12},
 	}}
 	d, err := newDashboard(f).Get(actorCtx(anaID), "UTC")
 	if err != nil {
@@ -119,7 +127,7 @@ func TestDashboardFillsEveryDayOfTheChart(t *testing.T) {
 		"2026-08-01": {Date: "2026-08-01"},
 		"2026-10-20": {Date: "2026-10-20", Words: 2, Highlights: 1},
 		"2026-10-22": {Date: "2026-10-22"},
-		"2026-10-23": {Date: "2026-10-23", Pages: 3},
+		"2026-10-23": {Date: "2026-10-23", Pages: 3, Reviews: 12},
 	}
 	for _, day := range d.Activity {
 		if w, ok := want[day.Date]; ok && day != w {
@@ -147,6 +155,22 @@ func TestDashboardTotals(t *testing.T) {
 	}
 }
 
+func TestDashboardReviewCounts(t *testing.T) {
+	f := &fakeDashboardStore{reviews: store.GetReviewCountsRow{Due: 7, Unseen: 40, StartedToday: 15}}
+	d, err := newDashboard(f).Get(actorCtx(anaID), "Europe/Belgrade")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 5 new words are left of today's 20.
+	if want := (ReviewCounts{Due: 7, New: 5}); d.Review != want {
+		t.Errorf("review = %+v, want %+v", d.Review, want)
+	}
+	belgrade, _ := time.LoadLocation("Europe/Belgrade")
+	if !f.reviewArgs.Today.Equal(date("2026-10-24")) || !f.reviewArgs.DayStart.Equal(time.Date(2026, 10, 24, 0, 0, 0, 0, belgrade)) {
+		t.Errorf("counted for %v from %v", f.reviewArgs.Today, f.reviewArgs.DayStart)
+	}
+}
+
 func TestStreak(t *testing.T) {
 	today := time.Date(2026, 10, 23, 0, 0, 0, 0, time.UTC)
 	days := func(dates ...string) map[string]ActivityDay {
@@ -169,6 +193,7 @@ func TestStreak(t *testing.T) {
 		{"a gap stops it", days("2026-10-19", "2026-10-21", "2026-10-22", "2026-10-23"), 3},
 		{"across a month", days("2026-09-30", "2026-10-01"), 0},
 		{"an empty row is not activity", map[string]ActivityDay{"2026-10-23": {Date: "2026-10-23"}}, 0},
+		{"reviewing words is activity", map[string]ActivityDay{"2026-10-23": {Date: "2026-10-23", Reviews: 5}}, 1},
 	}
 	for _, tt := range tests {
 		if got := streak(tt.days, today); got != tt.want {

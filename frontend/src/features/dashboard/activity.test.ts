@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { ActivityDay } from "../../lib/api/types";
 import { calendarWeeks, describeDay, formatDay, level, monthLabels, previousDay } from "./activity";
 
-function day(date: string, words = 0, highlights = 0, pages = 0): ActivityDay {
-  return { date, words, highlights, pages };
+function day(date: string, words = 0, highlights = 0, pages = 0, reviews = 0): ActivityDay {
+  return { date, words, highlights, pages, reviews };
 }
 
 describe("level", () => {
@@ -88,6 +88,8 @@ describe("day text", () => {
   it("describes what was done, leaving out zeros", () => {
     expect(describeDay(day("2026-10-23", 2, 1, 3))).toBe("2 words, 1 highlight, 3 pages written on");
     expect(describeDay(day("2026-10-23", 1, 0, 1))).toBe("1 word, 1 page written on");
+    expect(describeDay(day("2026-10-23", 0, 0, 0, 12))).toBe("12 cards reviewed");
+    expect(describeDay(day("2026-10-23", 0, 0, 0, 1))).toBe("1 card reviewed");
     expect(describeDay(day("2026-10-23"))).toBe("Nothing done");
   });
 

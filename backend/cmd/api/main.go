@@ -59,6 +59,7 @@ func run() error {
 			Profile:      identity.NewProfileService(queries),
 			Dashboard:    learning.NewDashboardService(queries),
 			Vocabulary:   learning.NewVocabularyService(queries),
+			Reviews:      learning.NewReviewService(queries),
 			Lessons:      learning.NewLessonService(queries, files),
 			Annotations:  learning.NewAnnotationService(queries),
 			Drawings:     learning.NewDrawingService(queries),

@@ -17,6 +17,7 @@ type Dependencies struct {
 	Profile      ProfileService
 	Dashboard    DashboardService
 	Vocabulary   VocabularyService
+	Reviews      ReviewService
 	Lessons      LessonService
 	Annotations  AnnotationService
 	Drawings     DrawingService
@@ -29,6 +30,7 @@ type api struct {
 	profile      ProfileService
 	dashboard    DashboardService
 	vocabulary   VocabularyService
+	reviews      ReviewService
 	lessons      LessonService
 	annotations  AnnotationService
 	drawings     DrawingService
@@ -42,6 +44,7 @@ func NewRouter(deps Dependencies) http.Handler {
 		profile:      deps.Profile,
 		dashboard:    deps.Dashboard,
 		vocabulary:   deps.Vocabulary,
+		reviews:      deps.Reviews,
 		lessons:      deps.Lessons,
 		annotations:  deps.Annotations,
 		drawings:     deps.Drawings,
@@ -88,6 +91,8 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/vocabulary", a.createVocabularyEntry)
 				r.Put("/vocabulary/{id}", a.updateVocabularyEntry)
 				r.Delete("/vocabulary/{id}", a.deleteVocabularyEntry)
+				r.Post("/vocabulary/{id}/reviews", a.createReview)
+				r.Get("/review-queue", a.getReviewQueue)
 
 				r.Get("/lessons", a.listLessons)
 				r.Post("/lessons", a.createLesson)

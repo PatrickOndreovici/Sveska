@@ -203,6 +203,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vocabulary/{id}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer a word's flashcard.
+         * @description Records how well the word was remembered and schedules its next
+         *     review. The word may be new or already due; answering a word early
+         *     is allowed.
+         */
+        post: operations["createReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/review-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the words to review today.
+         * @description Words due today come first, longest overdue first, then new words,
+         *     oldest first, at most 20 new words a day. Returns at most 50 cards;
+         *     once they are answered, ask again for the rest. A word answered
+         *     "again" is due again today, so it comes back in a later request.
+         */
+        get: operations["getReviewQueue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/lessons": {
         parameters: {
             query?: never;
@@ -585,6 +632,74 @@ export interface components {
             page: number;
             pageSize: number;
         };
+        /**
+         * @description How well the word was remembered; `again` means forgotten.
+         * @enum {string}
+         */
+        ReviewRating: "again" | "hard" | "good" | "easy";
+        ReviewInput: {
+            rating: components["schemas"]["ReviewRating"];
+            /**
+             * @description An IANA time zone name, for counting days. Defaults to UTC.
+             * @example Europe/Belgrade
+             */
+            timeZone?: string;
+        };
+        Review: {
+            /** Format: uuid */
+            entryId: string;
+            rating: components["schemas"]["ReviewRating"];
+            /**
+             * Format: date
+             * @description When the word comes back; today after `again`.
+             */
+            dueOn: string;
+            intervalDays: number;
+        };
+        ReviewEnvelope: {
+            review: components["schemas"]["Review"];
+        };
+        /**
+         * @description In how many days the word would come back after each answer; 0 is
+         *     today.
+         */
+        NextIntervals: {
+            again: number;
+            hard: number;
+            good: number;
+            easy: number;
+        };
+        ReviewCard: {
+            entry: components["schemas"]["VocabularyEntry"];
+            /** @description The word has never been reviewed. */
+            new: boolean;
+            nextIntervals: components["schemas"]["NextIntervals"];
+        };
+        ReviewQueue: {
+            /**
+             * Format: date
+             * @description Today's date in the requested time zone.
+             */
+            today: string;
+            /** @description The words to review, in order. */
+            cards: components["schemas"]["ReviewCard"][];
+            /** @description Words due today in all, those in `cards` included. */
+            due: number;
+            /** @description New words left to learn today, those in `cards` included. */
+            new: number;
+            /**
+             * Format: date
+             * @description The first day after today with words to review, or null when the
+             *     student has no words.
+             */
+            nextDueOn: string | null;
+        };
+        ReviewCounts: {
+            /** @description Words due today. */
+            due: number;
+            /** @description New words left to learn today. */
+            new: number;
+        };
         LessonInput: {
             /** @example Lekcija 3 – Padeži */
             title: string;
@@ -642,9 +757,11 @@ export interface components {
              */
             today: string;
             totals: components["schemas"]["DashboardTotals"];
+            review: components["schemas"]["ReviewCounts"];
             /**
-             * @description Days in a row with any activity, up to today. A streak that
-             *     reached yesterday still counts while nothing is done yet today.
+             * @description Days in a row with any activity, flashcards included, up to
+             *     today. A streak that reached yesterday still counts while nothing
+             *     is done yet today.
              */
             streak: number;
             /**
@@ -679,6 +796,8 @@ export interface components {
             highlights: number;
             /** @description PDF pages drawn or written on, each counted once. */
             pages: number;
+            /** @description Flashcard answers. */
+            reviews: number;
         };
         RecentWord: {
             /** Format: uuid */
@@ -976,6 +1095,19 @@ export interface components {
          *     `duplicate_entry`). The word is compared ignoring case.
          */
         DuplicateEntry: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description The word was answered elsewhere, such as in another tab, after this
+         *     answer's word was loaded (code `review_conflict`). Nothing was saved;
+         *     load the queue again.
+         */
+        ReviewConflict: {
             headers: {
                 [name: string]: unknown;
             };
@@ -1426,6 +1558,82 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
             404: components["responses"]["EntryNotFound"];
+        };
+    };
+    createReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewInput"];
+            };
+        };
+        responses: {
+            /** @description The answer was recorded. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["EntryNotFound"];
+            409: components["responses"]["ReviewConflict"];
+            /**
+             * @description `validation_failed` with a `rating` problem (not one of the four
+             *     ratings) or a `timeZone` problem (not a known time zone).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getReviewQueue: {
+        parameters: {
+            query?: {
+                /** @description An IANA time zone name. Defaults to UTC. */
+                timeZone?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The queue. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewQueue"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
+            /** @description `validation_failed` with a `timeZone` problem: not a known time zone. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listLessons: {

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Sveska API
-  version: 0.8.0
+  version: 0.9.0
   description: |
     REST API for the language-learning workspace. This file is the contract:
     endpoints are added here first, then implemented in backend/internal/httpapi
@@ -30,6 +30,13 @@ tags:
     description: |
       A student's own list of words. Every entry is private to its owner;
       teachers get 403 `students_only`.
+  - name: reviews
+    description: |
+      Flashcards made from a student's words, Serbian side first. Each
+      answer schedules the word's next review further away the better it
+      was remembered (spaced repetition); a forgotten word comes back the
+      same day. Days are counted in the student's time zone, as on the
+      dashboard. Teachers get 403 `students_only`.
   - name: lessons
     description: |
       A student's lessons and the PDFs uploaded into them. Every lesson and
@@ -452,6 +459,89 @@ paths:
           $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
         "404":
           $ref: "#/components/responses/EntryNotFound"
+  /api/vocabulary/{id}/reviews:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [reviews]
+      operationId: createReview
+      summary: Answer a word's flashcard.
+      description: |
+        Records how well the word was remembered and schedules its next
+        review. The word may be new or already due; answering a word early
+        is allowed.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewInput"
+      responses:
+        "201":
+          description: The answer was recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/EntryNotFound"
+        "409":
+          $ref: "#/components/responses/ReviewConflict"
+        "422":
+          description: |
+            `validation_failed` with a `rating` problem (not one of the four
+            ratings) or a `timeZone` problem (not a known time zone).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/review-queue:
+    get:
+      tags: [reviews]
+      operationId: getReviewQueue
+      summary: Return the words to review today.
+      description: |
+        Words due today come first, longest overdue first, then new words,
+        oldest first, at most 20 new words a day. Returns at most 50 cards;
+        once they are answered, ask again for the rest. A word answered
+        "again" is due again today, so it comes back in a later request.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: timeZone
+          in: query
+          description: An IANA time zone name. Defaults to UTC.
+          schema:
+            type: string
+            example: Europe/Belgrade
+      responses:
+        "200":
+          description: The queue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewQueue"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
+        "422":
+          description: "`validation_failed` with a `timeZone` problem: not a known time zone."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/lessons:
     get:
       tags: [lessons]
@@ -1063,6 +1153,15 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    ReviewConflict:
+      description: |
+        The word was answered elsewhere, such as in another tab, after this
+        answer's word was loaded (code `review_conflict`). Nothing was saved;
+        load the queue again.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
     Health:
       type: object
@@ -1306,6 +1405,124 @@ components:
           type: integer
         pageSize:
           type: integer
+    ReviewRating:
+      type: string
+      enum: [again, hard, good, easy]
+      description: How well the word was remembered; `again` means forgotten.
+    ReviewInput:
+      type: object
+      additionalProperties: false
+      required: [rating]
+      properties:
+        rating:
+          $ref: "#/components/schemas/ReviewRating"
+        timeZone:
+          type: string
+          description: An IANA time zone name, for counting days. Defaults to UTC.
+          example: Europe/Belgrade
+    Review:
+      type: object
+      additionalProperties: false
+      required: [entryId, rating, dueOn, intervalDays]
+      properties:
+        entryId:
+          type: string
+          format: uuid
+        rating:
+          $ref: "#/components/schemas/ReviewRating"
+        dueOn:
+          type: string
+          format: date
+          description: When the word comes back; today after `again`.
+        intervalDays:
+          type: integer
+          minimum: 0
+          maximum: 365
+    ReviewEnvelope:
+      type: object
+      additionalProperties: false
+      required: [review]
+      properties:
+        review:
+          $ref: "#/components/schemas/Review"
+    NextIntervals:
+      type: object
+      additionalProperties: false
+      description: |
+        In how many days the word would come back after each answer; 0 is
+        today.
+      required: [again, hard, good, easy]
+      properties:
+        again:
+          type: integer
+          minimum: 0
+          maximum: 365
+        hard:
+          type: integer
+          minimum: 0
+          maximum: 365
+        good:
+          type: integer
+          minimum: 0
+          maximum: 365
+        easy:
+          type: integer
+          minimum: 0
+          maximum: 365
+    ReviewCard:
+      type: object
+      additionalProperties: false
+      required: [entry, new, nextIntervals]
+      properties:
+        entry:
+          $ref: "#/components/schemas/VocabularyEntry"
+        new:
+          type: boolean
+          description: The word has never been reviewed.
+        nextIntervals:
+          $ref: "#/components/schemas/NextIntervals"
+    ReviewQueue:
+      type: object
+      additionalProperties: false
+      required: [today, cards, due, new, nextDueOn]
+      properties:
+        today:
+          type: string
+          format: date
+          description: Today's date in the requested time zone.
+        cards:
+          type: array
+          maxItems: 50
+          description: The words to review, in order.
+          items:
+            $ref: "#/components/schemas/ReviewCard"
+        due:
+          type: integer
+          minimum: 0
+          description: Words due today in all, those in `cards` included.
+        new:
+          type: integer
+          minimum: 0
+          description: New words left to learn today, those in `cards` included.
+        nextDueOn:
+          type: [string, "null"]
+          format: date
+          description: |
+            The first day after today with words to review, or null when the
+            student has no words.
+    ReviewCounts:
+      type: object
+      additionalProperties: false
+      required: [due, new]
+      properties:
+        due:
+          type: integer
+          minimum: 0
+          description: Words due today.
+        new:
+          type: integer
+          minimum: 0
+          description: New words left to learn today.
     LessonInput:
       type: object
       additionalProperties: false
@@ -1414,7 +1631,7 @@ components:
     Dashboard:
       type: object
       additionalProperties: false
-      required: [today, totals, streak, activity, recentWords, recentDocuments]
+      required: [today, totals, review, streak, activity, recentWords, recentDocuments]
       properties:
         today:
           type: string
@@ -1422,12 +1639,15 @@ components:
           description: Today's date in the requested time zone.
         totals:
           $ref: "#/components/schemas/DashboardTotals"
+        review:
+          $ref: "#/components/schemas/ReviewCounts"
         streak:
           type: integer
           minimum: 0
           description: |
-            Days in a row with any activity, up to today. A streak that
-            reached yesterday still counts while nothing is done yet today.
+            Days in a row with any activity, flashcards included, up to
+            today. A streak that reached yesterday still counts while nothing
+            is done yet today.
         activity:
           type: array
           description: |
@@ -1475,7 +1695,7 @@ components:
     ActivityDay:
       type: object
       additionalProperties: false
-      required: [date, words, highlights, pages]
+      required: [date, words, highlights, pages, reviews]
       properties:
         date:
           type: string
@@ -1492,6 +1712,10 @@ components:
           type: integer
           minimum: 0
           description: PDF pages drawn or written on, each counted once.
+        reviews:
+          type: integer
+          minimum: 0
+          description: Flashcard answers.
     RecentWord:
       type: object
       additionalProperties: false

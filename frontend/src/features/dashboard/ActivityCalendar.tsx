@@ -139,6 +139,9 @@ export function ActivityCalendar({ activity, today }: { activity: readonly Activ
                 <th scope="col" className="py-1.5 text-right font-medium">
                   Pages
                 </th>
+                <th scope="col" className="py-1.5 text-right font-medium">
+                  Cards
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -150,6 +153,7 @@ export function ActivityCalendar({ activity, today }: { activity: readonly Activ
                   <td className="py-1.5 text-right">{day.words}</td>
                   <td className="py-1.5 text-right">{day.highlights}</td>
                   <td className="py-1.5 text-right">{day.pages}</td>
+                  <td className="py-1.5 text-right">{day.reviews}</td>
                 </tr>
               ))}
             </tbody>

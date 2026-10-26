@@ -140,6 +140,50 @@ func (ns NullPartOfSpeech) Value() (driver.Value, error) {
 	return string(ns.PartOfSpeech), nil
 }
 
+type ReviewRating string
+
+const (
+	ReviewRatingAgain ReviewRating = "again"
+	ReviewRatingHard  ReviewRating = "hard"
+	ReviewRatingGood  ReviewRating = "good"
+	ReviewRatingEasy  ReviewRating = "easy"
+)
+
+func (e *ReviewRating) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ReviewRating(s)
+	case string:
+		*e = ReviewRating(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ReviewRating: %T", src)
+	}
+	return nil
+}
+
+type NullReviewRating struct {
+	ReviewRating ReviewRating
+	Valid        bool // Valid is true if ReviewRating is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullReviewRating) Scan(value interface{}) error {
+	if value == nil {
+		ns.ReviewRating, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ReviewRating.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullReviewRating) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ReviewRating), nil
+}
+
 type UserRole string
 
 const (
@@ -265,6 +309,27 @@ type Lesson struct {
 	Description string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+type Review struct {
+	ID           string
+	OwnerID      string
+	EntryID      *string
+	Rating       ReviewRating
+	IntervalDays int32
+	ReviewedAt   time.Time
+}
+
+type ReviewCard struct {
+	EntryID        string
+	OwnerID        string
+	DueOn          time.Time
+	IntervalDays   int32
+	EasePercent    int32
+	Repetitions    int32
+	Lapses         int32
+	LastReviewedAt time.Time
+	CreatedAt      time.Time
 }
 
 type Session struct {

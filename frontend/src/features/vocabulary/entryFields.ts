@@ -62,6 +62,15 @@ export const aspectAbbreviations: Record<Exclude<Aspect, "">, string> = {
   biaspectual: "impf./pf.",
 };
 
+/** The other forms of the word: plural, aspect pair, or adjective endings. */
+export function formsOf(entry: EntryFields): string | null {
+  if (entry.plural) return `pl. ${entry.plural}`;
+  if (entry.aspectPair) return `↔ ${entry.aspectPair}`;
+  const adjectiveForms = [entry.feminineForm, entry.neuterForm].filter(Boolean);
+  if (adjectiveForms.length > 0) return [entry.term, ...adjectiveForms].join(", ");
+  return null;
+}
+
 function oneOf<T extends string>(allowed: readonly T[], value: string): T | "" {
   return (allowed as readonly string[]).includes(value) ? (value as T) : "";
 }

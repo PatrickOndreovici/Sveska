@@ -15,6 +15,7 @@ export const navigationByRole: Record<Role, readonly NavItem[]> = {
     { to: "/", label: "My workspace" },
     { to: "/lessons", label: "Lessons" },
     { to: "/vocabulary", label: "Vocabulary" },
+    { to: "/review", label: "Review" },
   ],
   teacher: [{ to: "/", label: "Teaching" }],
 };

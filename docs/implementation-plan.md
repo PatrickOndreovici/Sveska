@@ -43,6 +43,9 @@ light and dark with a Light/Dark/System switch), Sveska logo and favicon, UI pri
 
 ## Phase 4 — Quizzes and progress
 
+- Flashcards from the vocabulary with spaced repetition (built ahead of the
+  quizzes): a review page with today's words, due words first and then up
+  to 20 new ones a day, and a count of them on the dashboard.
 - Quiz authoring, attempts, automatic scoring for multiple choice, manual
   marking for short answers.
 - Lesson progress and a progress overview derived from stored data.
