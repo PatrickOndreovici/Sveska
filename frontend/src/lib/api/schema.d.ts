@@ -215,10 +215,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Answer a word's flashcard.
-         * @description Records how well the word was remembered and schedules its next
-         *     review. The word may be new or already due; answering a word early
-         *     is allowed.
+         * Answer one of a word's flashcards.
+         * @description Records how well the word was remembered, one way round, and
+         *     schedules that card's next review. The card may be new or already
+         *     due; answering a card early is allowed.
          */
         post: operations["createReview"];
         delete?: never;
@@ -235,11 +235,15 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Return the words to review today.
-         * @description Words due today come first, longest overdue first, then new words,
-         *     oldest first, at most 20 new words a day. Returns at most 50 cards;
-         *     once they are answered, ask again for the rest. A word answered
-         *     "again" is due again today, so it comes back in a later request.
+         * Return the cards to review today.
+         * @description Cards due today come first, longest overdue first; then the first
+         *     English-side cards of words learned the other way, those learned
+         *     first first, at most 20 a day; then new words, oldest first, at most
+         *     20 a day. A word has at most one card in the queue, and a card waits
+         *     for tomorrow while the word's other card was reviewed today. Returns
+         *     at most 50 cards; once they are answered, ask again for the rest. A
+         *     card answered "again" is due again today, so it comes back in a
+         *     later request.
          */
         get: operations["getReviewQueue"];
         put?: never;
@@ -633,11 +637,19 @@ export interface components {
             pageSize: number;
         };
         /**
+         * @description Which way round a card goes: `sr_en` shows the Serbian word and asks
+         *     for its meaning; `en_sr` shows the meaning and asks for the Serbian
+         *     word, typed.
+         * @enum {string}
+         */
+        ReviewDirection: "sr_en" | "en_sr";
+        /**
          * @description How well the word was remembered; `again` means forgotten.
          * @enum {string}
          */
         ReviewRating: "again" | "hard" | "good" | "easy";
         ReviewInput: {
+            direction: components["schemas"]["ReviewDirection"];
             rating: components["schemas"]["ReviewRating"];
             /**
              * @description An IANA time zone name, for counting days. Defaults to UTC.
@@ -648,10 +660,11 @@ export interface components {
         Review: {
             /** Format: uuid */
             entryId: string;
+            direction: components["schemas"]["ReviewDirection"];
             rating: components["schemas"]["ReviewRating"];
             /**
              * Format: date
-             * @description When the word comes back; today after `again`.
+             * @description When the card comes back; today after `again`.
              */
             dueOn: string;
             intervalDays: number;
@@ -660,7 +673,7 @@ export interface components {
             review: components["schemas"]["Review"];
         };
         /**
-         * @description In how many days the word would come back after each answer; 0 is
+         * @description In how many days the card would come back after each answer; 0 is
          *     today.
          */
         NextIntervals: {
@@ -671,7 +684,8 @@ export interface components {
         };
         ReviewCard: {
             entry: components["schemas"]["VocabularyEntry"];
-            /** @description The word has never been reviewed. */
+            direction: components["schemas"]["ReviewDirection"];
+            /** @description The word has never been reviewed this way round. */
             new: boolean;
             nextIntervals: components["schemas"]["NextIntervals"];
         };
@@ -681,15 +695,18 @@ export interface components {
              * @description Today's date in the requested time zone.
              */
             today: string;
-            /** @description The words to review, in order. */
+            /** @description The cards to review, in order, at most one per word. */
             cards: components["schemas"]["ReviewCard"][];
             /** @description Words due today in all, those in `cards` included. */
             due: number;
-            /** @description New words left to learn today, those in `cards` included. */
+            /**
+             * @description New cards left to start today, those in `cards` included: new
+             *     words and the first English-side cards of known ones.
+             */
             new: number;
             /**
              * Format: date
-             * @description The first day after today with words to review, or null when the
+             * @description The first day after today with cards to review, or null when the
              *     student has no words.
              */
             nextDueOn: string | null;
@@ -697,7 +714,7 @@ export interface components {
         ReviewCounts: {
             /** @description Words due today. */
             due: number;
-            /** @description New words left to learn today. */
+            /** @description New cards left to start today, of both kinds. */
             new: number;
         };
         LessonInput: {
@@ -1103,8 +1120,8 @@ export interface components {
             };
         };
         /**
-         * @description The word was answered elsewhere, such as in another tab, after this
-         *     answer's word was loaded (code `review_conflict`). Nothing was saved;
+         * @description The card was answered elsewhere, such as in another tab, after this
+         *     answer's card was loaded (code `review_conflict`). Nothing was saved;
          *     load the queue again.
          */
         ReviewConflict: {
@@ -1589,7 +1606,8 @@ export interface operations {
             404: components["responses"]["EntryNotFound"];
             409: components["responses"]["ReviewConflict"];
             /**
-             * @description `validation_failed` with a `rating` problem (not one of the four
+             * @description `validation_failed` with a `direction` problem (missing or not
+             *     one of the two), a `rating` problem (not one of the four
              *     ratings) or a `timeZone` problem (not a known time zone).
              */
             422: {

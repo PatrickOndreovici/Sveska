@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Sveska API
-  version: 0.9.0
+  version: 0.10.0
   description: |
     REST API for the language-learning workspace. This file is the contract:
     endpoints are added here first, then implemented in backend/internal/httpapi
@@ -32,10 +32,14 @@ tags:
       teachers get 403 `students_only`.
   - name: reviews
     description: |
-      Flashcards made from a student's words, Serbian side first. Each
-      answer schedules the word's next review further away the better it
-      was remembered (spaced repetition); a forgotten word comes back the
-      same day. Days are counted in the student's time zone, as on the
+      Flashcards made from a student's words. Every word has a card shown
+      Serbian side first (`sr_en`); once that one has been remembered twice
+      in a row, the word also gets a card shown English side first
+      (`en_sr`), answered by typing the Serbian word. Each card's answers
+      schedule its next review further away the better it was remembered
+      (spaced repetition); a forgotten card comes back the same day. A word
+      shows one card a day, so that one does not give away the other's
+      answer. Days are counted in the student's time zone, as on the
       dashboard. Teachers get 403 `students_only`.
   - name: lessons
     description: |
@@ -470,11 +474,11 @@ paths:
     post:
       tags: [reviews]
       operationId: createReview
-      summary: Answer a word's flashcard.
+      summary: Answer one of a word's flashcards.
       description: |
-        Records how well the word was remembered and schedules its next
-        review. The word may be new or already due; answering a word early
-        is allowed.
+        Records how well the word was remembered, one way round, and
+        schedules that card's next review. The card may be new or already
+        due; answering a card early is allowed.
       security:
         - sessionCookie: []
       requestBody:
@@ -500,7 +504,8 @@ paths:
           $ref: "#/components/responses/ReviewConflict"
         "422":
           description: |
-            `validation_failed` with a `rating` problem (not one of the four
+            `validation_failed` with a `direction` problem (missing or not
+            one of the two), a `rating` problem (not one of the four
             ratings) or a `timeZone` problem (not a known time zone).
           content:
             application/json:
@@ -510,12 +515,16 @@ paths:
     get:
       tags: [reviews]
       operationId: getReviewQueue
-      summary: Return the words to review today.
+      summary: Return the cards to review today.
       description: |
-        Words due today come first, longest overdue first, then new words,
-        oldest first, at most 20 new words a day. Returns at most 50 cards;
-        once they are answered, ask again for the rest. A word answered
-        "again" is due again today, so it comes back in a later request.
+        Cards due today come first, longest overdue first; then the first
+        English-side cards of words learned the other way, those learned
+        first first, at most 20 a day; then new words, oldest first, at most
+        20 a day. A word has at most one card in the queue, and a card waits
+        for tomorrow while the word's other card was reviewed today. Returns
+        at most 50 cards; once they are answered, ask again for the rest. A
+        card answered "again" is due again today, so it comes back in a
+        later request.
       security:
         - sessionCookie: []
       parameters:
@@ -1155,8 +1164,8 @@ components:
             $ref: "#/components/schemas/Error"
     ReviewConflict:
       description: |
-        The word was answered elsewhere, such as in another tab, after this
-        answer's word was loaded (code `review_conflict`). Nothing was saved;
+        The card was answered elsewhere, such as in another tab, after this
+        answer's card was loaded (code `review_conflict`). Nothing was saved;
         load the queue again.
       content:
         application/json:
@@ -1405,6 +1414,13 @@ components:
           type: integer
         pageSize:
           type: integer
+    ReviewDirection:
+      type: string
+      enum: [sr_en, en_sr]
+      description: |
+        Which way round a card goes: `sr_en` shows the Serbian word and asks
+        for its meaning; `en_sr` shows the meaning and asks for the Serbian
+        word, typed.
     ReviewRating:
       type: string
       enum: [again, hard, good, easy]
@@ -1412,8 +1428,10 @@ components:
     ReviewInput:
       type: object
       additionalProperties: false
-      required: [rating]
+      required: [direction, rating]
       properties:
+        direction:
+          $ref: "#/components/schemas/ReviewDirection"
         rating:
           $ref: "#/components/schemas/ReviewRating"
         timeZone:
@@ -1423,17 +1441,19 @@ components:
     Review:
       type: object
       additionalProperties: false
-      required: [entryId, rating, dueOn, intervalDays]
+      required: [entryId, direction, rating, dueOn, intervalDays]
       properties:
         entryId:
           type: string
           format: uuid
+        direction:
+          $ref: "#/components/schemas/ReviewDirection"
         rating:
           $ref: "#/components/schemas/ReviewRating"
         dueOn:
           type: string
           format: date
-          description: When the word comes back; today after `again`.
+          description: When the card comes back; today after `again`.
         intervalDays:
           type: integer
           minimum: 0
@@ -1449,7 +1469,7 @@ components:
       type: object
       additionalProperties: false
       description: |
-        In how many days the word would come back after each answer; 0 is
+        In how many days the card would come back after each answer; 0 is
         today.
       required: [again, hard, good, easy]
       properties:
@@ -1472,13 +1492,15 @@ components:
     ReviewCard:
       type: object
       additionalProperties: false
-      required: [entry, new, nextIntervals]
+      required: [entry, direction, new, nextIntervals]
       properties:
         entry:
           $ref: "#/components/schemas/VocabularyEntry"
+        direction:
+          $ref: "#/components/schemas/ReviewDirection"
         new:
           type: boolean
-          description: The word has never been reviewed.
+          description: The word has never been reviewed this way round.
         nextIntervals:
           $ref: "#/components/schemas/NextIntervals"
     ReviewQueue:
@@ -1493,7 +1515,7 @@ components:
         cards:
           type: array
           maxItems: 50
-          description: The words to review, in order.
+          description: The cards to review, in order, at most one per word.
           items:
             $ref: "#/components/schemas/ReviewCard"
         due:
@@ -1503,12 +1525,14 @@ components:
         new:
           type: integer
           minimum: 0
-          description: New words left to learn today, those in `cards` included.
+          description: |
+            New cards left to start today, those in `cards` included: new
+            words and the first English-side cards of known ones.
         nextDueOn:
           type: [string, "null"]
           format: date
           description: |
-            The first day after today with words to review, or null when the
+            The first day after today with cards to review, or null when the
             student has no words.
     ReviewCounts:
       type: object
@@ -1522,7 +1546,7 @@ components:
         new:
           type: integer
           minimum: 0
-          description: New words left to learn today.
+          description: New cards left to start today, of both kinds.
     LessonInput:
       type: object
       additionalProperties: false

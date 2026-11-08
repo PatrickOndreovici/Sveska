@@ -31,7 +31,8 @@ type Totals struct {
 	Notes         int // highlights with a note
 }
 
-// ReviewCounts is what the student has to review today, as in ReviewQueue.
+// ReviewCounts is what the student has to review today, as in ReviewQueue:
+// New counts new cards of both kinds.
 type ReviewCounts struct {
 	Due int
 	New int
@@ -139,9 +140,7 @@ func (s *DashboardService) Get(ctx context.Context, timeZone string) (Dashboard,
 	if err != nil {
 		return Dashboard{}, fmt.Errorf("list recent documents: %w", err)
 	}
-	reviewCounts, err := s.store.GetReviewCounts(ctx, store.GetReviewCountsParams{
-		OwnerID: ownerID, Today: day.date(), DayStart: day.start,
-	})
+	reviewCounts, err := s.store.GetReviewCounts(ctx, reviewCountsParams(ownerID, day))
 	if err != nil {
 		return Dashboard{}, fmt.Errorf("get review counts: %w", err)
 	}
@@ -173,7 +172,7 @@ func (s *DashboardService) Get(ctx context.Context, timeZone string) (Dashboard,
 			Highlights:    int(totals.Highlights),
 			Notes:         int(totals.Notes),
 		},
-		Review:          ReviewCounts{Due: int(reviewCounts.Due), New: newWordsLeft(reviewCounts)},
+		Review:          ReviewCounts{Due: int(reviewCounts.Due), New: newWordsLeft(reviewCounts) + newRecallLeft(reviewCounts)},
 		Streak:          streak(byDate, today),
 		Activity:        activity,
 		RecentWords:     make([]RecentWord, 0, len(wordRows)),

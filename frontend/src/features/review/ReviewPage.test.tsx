@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type { ReviewCard, ReviewQueue, VocabularyEntry } from "../../lib/api/types";
+import type { ReviewCard, ReviewDirection, ReviewQueue, VocabularyEntry } from "../../lib/api/types";
 import { mockApi, student, type MockHandler, type MockResponse } from "../../test/mockApi";
 import { renderApp } from "../../test/renderApp";
 
@@ -20,9 +20,17 @@ const blank = {
   updatedAt: "2026-10-23T10:00:00Z",
 } as const;
 
-function card(id: string, term: string, translation: string, extra: Partial<VocabularyEntry> = {}, isNew = false): ReviewCard {
+function card(
+  id: string,
+  term: string,
+  translation: string,
+  extra: Partial<VocabularyEntry> = {},
+  isNew = false,
+  direction: ReviewDirection = "sr_en",
+): ReviewCard {
   return {
     entry: { id, term, translation, ...blank, ...extra },
+    direction,
     new: isNew,
     nextIntervals: isNew ? { again: 0, hard: 1, good: 2, easy: 4 } : { again: 0, hard: 12, good: 25, easy: 33 },
   };
@@ -36,6 +44,8 @@ const kuca = card("entry-kuca", "kuća", "house", {
   source: { annotationId: "a1", documentId: "d1", documentTitle: "Čitanka", pageNumber: 3 },
 });
 const voda = card("entry-voda", "voda", "water", {}, true);
+// kuća the other way round, English first.
+const house = { ...kuca, direction: "en_sr" } as const;
 
 function queue(cards: ReviewCard[], extra: Partial<ReviewQueue> = {}): ReviewQueue {
   return {
@@ -66,13 +76,13 @@ function fakeReviewApi(queues: ReviewQueue[], answer?: (body: { rating: string }
   };
   for (const c of queues.flatMap((q) => q.cards)) {
     routes[`POST /api/vocabulary/${c.entry.id}/reviews`] = (body) => {
-      const { rating } = body as { rating: keyof ReviewCard["nextIntervals"] };
+      const { direction, rating } = body as { direction: ReviewDirection; rating: keyof ReviewCard["nextIntervals"] };
       answers.push({ entryId: c.entry.id, body });
       const override = answer?.({ rating });
       if (override) return override;
       const days = c.nextIntervals[rating];
       const dueOn = new Date(Date.parse("2026-10-23T00:00:00Z") + days * 86_400_000).toISOString().slice(0, 10);
-      return { status: 201, body: { review: { entryId: c.entry.id, rating, dueOn, intervalDays: days } } };
+      return { status: 201, body: { review: { entryId: c.entry.id, direction, rating, dueOn, intervalDays: days } } };
     };
   }
   const fetchSpy = mockApi(routes);
@@ -116,7 +126,7 @@ describe("ReviewPage", () => {
     ]);
 
     await userEvent.click(ratings.getByRole("button", { name: "Good, back in 25 days" }));
-    expect(answers).toEqual([{ entryId: "entry-kuca", body: { rating: "good", timeZone } }]);
+    expect(answers).toEqual([{ entryId: "entry-kuca", body: { direction: "sr_en", rating: "good", timeZone } }]);
 
     expect(await screen.findByText("voda")).toBeInTheDocument();
     expect(screen.getByText("New word")).toBeInTheDocument();
@@ -161,8 +171,78 @@ describe("ReviewPage", () => {
     await userEvent.keyboard(" ");
     expect(screen.getByText("house")).toBeInTheDocument();
     await userEvent.keyboard("2");
-    expect(answers).toEqual([{ entryId: "entry-kuca", body: { rating: "hard", timeZone } }]);
+    expect(answers).toEqual([{ entryId: "entry-kuca", body: { direction: "sr_en", rating: "hard", timeZone } }]);
     expect(await screen.findByText("voda")).toBeInTheDocument();
+  });
+
+  it("asks for the Serbian word on an English-first card and suggests a rating", async () => {
+    const { answers } = fakeReviewApi([queue([house, voda])]);
+    renderApp("/review");
+
+    expect(await screen.findByText("house")).toBeInTheDocument();
+    expect(screen.getByTitle("Feminine · ženski rod")).toHaveTextContent("f.");
+    // Nothing that gives the word away shows before the answer.
+    expect(screen.queryByText("kuća")).not.toBeInTheDocument();
+    expect(screen.queryByText("pl. kuće")).not.toBeInTheDocument();
+    expect(screen.queryByText("Moja kuća je velika.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show answer" })).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText("In Serbian"), "kuca");
+    await userEvent.click(screen.getByRole("button", { name: "Check" }));
+
+    expect(screen.getByText("Almost: mind the č, ć, š, ž and đ.")).toBeInTheDocument();
+    expect(screen.getByText("You wrote")).toHaveTextContent("You wrote kuca");
+    expect(screen.getByText("kuća")).toBeInTheDocument();
+    expect(screen.getByText("pl. kuće")).toBeInTheDocument();
+    expect(screen.queryByLabelText("In Serbian")).not.toBeInTheDocument();
+    expect(document.activeElement).toHaveTextContent("kuća");
+
+    const ratings = within(screen.getByRole("group", { name: "How well did you know it?" }));
+    expect(ratings.getByRole("button", { name: "Hard, back in 12 days, suggested" })).toBeInTheDocument();
+    // Enter takes the suggestion.
+    await userEvent.keyboard("{Enter}");
+    expect(answers).toEqual([{ entryId: "entry-kuca", body: { direction: "en_sr", rating: "hard", timeZone } }]);
+    expect(await screen.findByText("voda")).toBeInTheDocument();
+  });
+
+  it("suggests good for a right answer and again for a wrong one, and either can be overruled", async () => {
+    const tea = card("entry-caj", "čaj", "tea", {}, true, "en_sr");
+    const { answers } = fakeReviewApi([queue([house, tea])]);
+    renderApp("/review");
+
+    await userEvent.type(await screen.findByLabelText("In Serbian"), "Kuća{Enter}");
+    expect(screen.getByText("Right.")).toBeInTheDocument();
+    expect(screen.queryByText("You wrote")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Easy, back in 1 month" }));
+
+    expect(await screen.findByText("tea")).toBeInTheDocument();
+    expect(screen.getByText("New: English → Serbian")).toBeInTheDocument();
+    // The next card's field has the focus, so the word can be typed at once.
+    expect(screen.getByLabelText("In Serbian")).toHaveFocus();
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByText("Not this time.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Again, back today, suggested" })).toBeInTheDocument();
+    await userEvent.keyboard("2");
+
+    expect(answers.map((a) => a.body)).toEqual([
+      { direction: "en_sr", rating: "easy", timeZone },
+      { direction: "en_sr", rating: "hard", timeZone },
+    ]);
+  });
+
+  it("has buttons for č, ć, š, ž and đ", async () => {
+    fakeReviewApi([queue([house])]);
+    renderApp("/review");
+
+    const field = await screen.findByLabelText("In Serbian");
+    await userEvent.type(field, "ku");
+    await userEvent.click(screen.getByRole("button", { name: "Type ć" }));
+    expect(field).toHaveFocus();
+    await userEvent.type(field, "a");
+    expect(field).toHaveValue("kuća");
+
+    await userEvent.click(screen.getByRole("button", { name: "Check" }));
+    expect(screen.getByText("Right.")).toBeInTheDocument();
   });
 
   it("says when to come back when nothing is due", async () => {

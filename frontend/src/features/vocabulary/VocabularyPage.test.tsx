@@ -189,6 +189,28 @@ describe("VocabularyPage", () => {
     expect(addForm().getByLabelText("Serbian")).toHaveValue("");
   });
 
+  it("types č, ć, š, ž and đ into the Serbian field used last", async () => {
+    fakeVocabularyApi([citati]);
+    await renderVocabulary();
+    await screen.findByText("1 word collected so far.");
+    const letters = within(addForm().getByRole("group", { name: "Serbian letters" }));
+
+    // Into the word itself until another Serbian field is used.
+    await userEvent.click(letters.getByRole("button", { name: "Type č" }));
+    await userEvent.type(addForm().getByLabelText("Serbian"), "aj");
+    expect(addForm().getByLabelText("Serbian")).toHaveValue("čaj");
+
+    await userEvent.type(addForm().getByLabelText("Example sentence"), "Pijem ");
+    await userEvent.click(letters.getByRole("button", { name: "Type č" }));
+    expect(addForm().getByLabelText("Example sentence")).toHaveValue("Pijem č");
+    expect(addForm().getByLabelText("Example sentence")).toHaveFocus();
+    // The English fields are left alone.
+    await userEvent.type(addForm().getByLabelText("Translation"), "tea");
+    await userEvent.click(letters.getByRole("button", { name: "Type š" }));
+    expect(addForm().getByLabelText("Translation")).toHaveValue("tea");
+    expect(addForm().getByLabelText("Example sentence")).toHaveValue("Pijem čš");
+  });
+
   it("shows the API's message when the word already exists", async () => {
     fakeVocabularyApi([kuca], {
       "POST /api/vocabulary": {

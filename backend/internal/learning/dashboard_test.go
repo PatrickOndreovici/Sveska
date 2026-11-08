@@ -156,18 +156,24 @@ func TestDashboardTotals(t *testing.T) {
 }
 
 func TestDashboardReviewCounts(t *testing.T) {
-	f := &fakeDashboardStore{reviews: store.GetReviewCountsRow{Due: 7, Unseen: 40, StartedToday: 15}}
+	// 5 new words left today and 3 English → Serbian cards.
+	f := &fakeDashboardStore{reviews: store.GetReviewCountsRow{
+		Due: 7, Unseen: 40, StartedToday: 15, RecallWaiting: 4, RecallReady: 3, RecallStartedToday: 2,
+	}}
 	d, err := newDashboard(f).Get(actorCtx(anaID), "Europe/Belgrade")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// 5 new words are left of today's 20.
-	if want := (ReviewCounts{Due: 7, New: 5}); d.Review != want {
+	if want := (ReviewCounts{Due: 7, New: 8}); d.Review != want {
 		t.Errorf("review = %+v, want %+v", d.Review, want)
 	}
 	belgrade, _ := time.LoadLocation("Europe/Belgrade")
 	if !f.reviewArgs.Today.Equal(date("2026-10-24")) || !f.reviewArgs.DayStart.Equal(time.Date(2026, 10, 24, 0, 0, 0, 0, belgrade)) {
 		t.Errorf("counted for %v from %v", f.reviewArgs.Today, f.reviewArgs.DayStart)
+	}
+	if f.reviewArgs.MinRepetitions != recallAfter {
+		t.Errorf("min repetitions = %d, want %d", f.reviewArgs.MinRepetitions, recallAfter)
 	}
 }
 

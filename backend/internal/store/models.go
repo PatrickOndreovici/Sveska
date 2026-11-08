@@ -140,6 +140,48 @@ func (ns NullPartOfSpeech) Value() (driver.Value, error) {
 	return string(ns.PartOfSpeech), nil
 }
 
+type ReviewDirection string
+
+const (
+	ReviewDirectionSrEn ReviewDirection = "sr_en"
+	ReviewDirectionEnSr ReviewDirection = "en_sr"
+)
+
+func (e *ReviewDirection) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ReviewDirection(s)
+	case string:
+		*e = ReviewDirection(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ReviewDirection: %T", src)
+	}
+	return nil
+}
+
+type NullReviewDirection struct {
+	ReviewDirection ReviewDirection
+	Valid           bool // Valid is true if ReviewDirection is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullReviewDirection) Scan(value interface{}) error {
+	if value == nil {
+		ns.ReviewDirection, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ReviewDirection.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullReviewDirection) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ReviewDirection), nil
+}
+
 type ReviewRating string
 
 const (
@@ -318,6 +360,7 @@ type Review struct {
 	Rating       ReviewRating
 	IntervalDays int32
 	ReviewedAt   time.Time
+	Direction    ReviewDirection
 }
 
 type ReviewCard struct {
@@ -330,6 +373,7 @@ type ReviewCard struct {
 	Lapses         int32
 	LastReviewedAt time.Time
 	CreatedAt      time.Time
+	Direction      ReviewDirection
 }
 
 type Session struct {

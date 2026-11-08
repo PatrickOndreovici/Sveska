@@ -11,41 +11,51 @@ import (
 )
 
 const getNextReviewDate = `-- name: GetNextReviewDate :one
-SELECT due_on
-FROM review_cards
-WHERE owner_id = $1
-  AND due_on > $2
-ORDER BY due_on
+SELECT GREATEST(c.due_on, $1::date)::date AS due_on
+FROM review_cards c
+WHERE c.owner_id = $2
+  AND (c.due_on >= $1 OR EXISTS (
+      SELECT 1 FROM review_cards o
+      WHERE o.entry_id = c.entry_id
+        AND o.direction <> c.direction
+        AND o.last_reviewed_at >= $3
+  ))
+ORDER BY 1
 LIMIT 1
 `
 
 type GetNextReviewDateParams struct {
-	OwnerID string
-	Today   time.Time
+	Tomorrow time.Time
+	OwnerID  string
+	DayStart time.Time
 }
 
-// The first day after @today with a card due; no row when there is none.
+// The first day from @tomorrow on with a card due; no row when there is
+// none. A card due by today that waits because the other card of its word
+// was reviewed today comes tomorrow.
 func (q *Queries) GetNextReviewDate(ctx context.Context, arg GetNextReviewDateParams) (time.Time, error) {
-	row := q.db.QueryRow(ctx, getNextReviewDate, arg.OwnerID, arg.Today)
+	row := q.db.QueryRow(ctx, getNextReviewDate, arg.Tomorrow, arg.OwnerID, arg.DayStart)
 	var due_on time.Time
 	err := row.Scan(&due_on)
 	return due_on, err
 }
 
 const getReviewCard = `-- name: GetReviewCard :one
-SELECT entry_id, owner_id, due_on, interval_days, ease_percent, repetitions, lapses, last_reviewed_at, created_at
+SELECT entry_id, owner_id, due_on, interval_days, ease_percent, repetitions, lapses, last_reviewed_at, created_at, direction
 FROM review_cards
 WHERE entry_id = $1
-  AND owner_id = $2
+  AND direction = $2
+  AND owner_id = $3
 `
 
 type GetReviewCardParams struct {
-	EntryID string
-	OwnerID string
+	EntryID   string
+	Direction ReviewDirection
+	OwnerID   string
 }
 
 func (q *Queries) GetReviewCard(ctx context.Context, arg GetReviewCardParams) (ReviewCard, error) {
-	row := q.db.QueryRow(ctx, getReviewCard, arg.EntryID, arg.OwnerID)
+	row := q.db.QueryRow(ctx, getReviewCard, arg.EntryID, arg.Direction, arg.OwnerID)
 	var i ReviewCard
 	err := row.Scan(
 		&i.EntryID,
@@ -57,60 +67,116 @@ func (q *Queries) GetReviewCard(ctx context.Context, arg GetReviewCardParams) (R
 		&i.Lapses,
 		&i.LastReviewedAt,
 		&i.CreatedAt,
+		&i.Direction,
 	)
 	return i, err
 }
 
 const getReviewCounts = `-- name: GetReviewCounts :one
+WITH recall AS (
+    SELECT
+        count(*) AS waiting,
+        count(*) FILTER (WHERE c.due_on > $2 AND c.last_reviewed_at < $3) AS ready
+    FROM review_cards c
+    WHERE c.owner_id = $1
+      AND c.direction = 'sr_en'
+      AND c.repetitions >= $4
+      AND NOT EXISTS (SELECT 1 FROM review_cards r WHERE r.entry_id = c.entry_id AND r.direction = 'en_sr')
+)
 SELECT
-    (SELECT count(*) FROM review_cards c WHERE c.owner_id = $1 AND c.due_on <= $2) AS due,
+    (SELECT count(DISTINCT d.entry_id) FROM review_cards d
+     WHERE d.owner_id = $1
+       AND d.due_on <= $2
+       AND NOT EXISTS (
+           SELECT 1 FROM review_cards o
+           WHERE o.entry_id = d.entry_id
+             AND o.direction <> d.direction
+             AND o.last_reviewed_at >= $3
+       )) AS due,
     (SELECT count(*) FROM vocabulary_entries v
      WHERE v.owner_id = $1
        AND NOT EXISTS (SELECT 1 FROM review_cards n WHERE n.entry_id = v.id)) AS unseen,
-    (SELECT count(*) FROM review_cards s WHERE s.owner_id = $1 AND s.created_at >= $3) AS started_today
+    (SELECT count(*) FROM review_cards s
+     WHERE s.owner_id = $1 AND s.direction = 'sr_en' AND s.created_at >= $3) AS started_today,
+    recall.waiting AS recall_waiting,
+    recall.ready AS recall_ready,
+    (SELECT count(*) FROM review_cards s
+     WHERE s.owner_id = $1 AND s.direction = 'en_sr' AND s.created_at >= $3) AS recall_started_today
+FROM recall
 `
 
 type GetReviewCountsParams struct {
-	OwnerID  string
-	Today    time.Time
-	DayStart time.Time
+	OwnerID        string
+	Today          time.Time
+	DayStart       time.Time
+	MinRepetitions int32
 }
 
 type GetReviewCountsRow struct {
-	Due          int64
-	Unseen       int64
-	StartedToday int64
+	Due                int64
+	Unseen             int64
+	StartedToday       int64
+	RecallWaiting      int64
+	RecallReady        int64
+	RecallStartedToday int64
 }
 
-// due: cards due on or before @today. unseen: words never reviewed.
-// started_today: words first reviewed since @day_start, which count
-// against the day's limit of new words.
+// due: words with a card due on or before @today that can show today.
+// unseen: words never reviewed. started_today: words first reviewed since
+// @day_start, which count against the day's limit of new words.
+// recall_waiting: words remembered well enough for an English-to-Serbian
+// card that have none yet; recall_ready: those whose card can start today
+// (see ListNewRecallEntries). recall_started_today: English-to-Serbian
+// cards started since @day_start, which have a daily limit of their own.
 func (q *Queries) GetReviewCounts(ctx context.Context, arg GetReviewCountsParams) (GetReviewCountsRow, error) {
-	row := q.db.QueryRow(ctx, getReviewCounts, arg.OwnerID, arg.Today, arg.DayStart)
+	row := q.db.QueryRow(ctx, getReviewCounts,
+		arg.OwnerID,
+		arg.Today,
+		arg.DayStart,
+		arg.MinRepetitions,
+	)
 	var i GetReviewCountsRow
-	err := row.Scan(&i.Due, &i.Unseen, &i.StartedToday)
+	err := row.Scan(
+		&i.Due,
+		&i.Unseen,
+		&i.StartedToday,
+		&i.RecallWaiting,
+		&i.RecallReady,
+		&i.RecallStartedToday,
+	)
 	return i, err
 }
 
 const listDueReviewCards = `-- name: ListDueReviewCards :many
 
-SELECT v.id, v.owner_id, v.term, v.translation, v.notes, v.created_at, v.updated_at, v.part_of_speech, v.example, v.gender, v.plural, v.aspect, v.aspect_pair, v.feminine_form, v.neuter_form, v.source_annotation_id, c.due_on, c.interval_days, c.ease_percent, c.repetitions, c.lapses, c.last_reviewed_at
+SELECT v.id, v.owner_id, v.term, v.translation, v.notes, v.created_at, v.updated_at, v.part_of_speech, v.example, v.gender, v.plural, v.aspect, v.aspect_pair, v.feminine_form, v.neuter_form, v.source_annotation_id, c.direction, c.due_on, c.interval_days, c.ease_percent, c.repetitions, c.lapses, c.last_reviewed_at
 FROM review_cards c
 JOIN vocabulary_entries v ON v.id = c.entry_id
 WHERE c.owner_id = $1
   AND c.due_on <= $2
+  AND NOT EXISTS (
+      SELECT 1 FROM review_cards o
+      WHERE o.entry_id = c.entry_id
+        AND o.direction <> c.direction
+        AND (o.last_reviewed_at >= $3
+             OR (o.due_on <= $2
+                 AND c.last_reviewed_at < $3
+                 AND (o.due_on, o.last_reviewed_at, o.direction) < (c.due_on, c.last_reviewed_at, c.direction)))
+  )
 ORDER BY c.due_on, c.last_reviewed_at, c.entry_id
-LIMIT $3
+LIMIT $4
 `
 
 type ListDueReviewCardsParams struct {
 	OwnerID  string
 	Today    time.Time
+	DayStart time.Time
 	RowLimit int32
 }
 
 type ListDueReviewCardsRow struct {
 	VocabularyEntry VocabularyEntry
+	Direction       ReviewDirection
 	DueOn           time.Time
 	IntervalDays    int32
 	EasePercent     int32
@@ -121,10 +187,24 @@ type ListDueReviewCardsRow struct {
 
 // Flashcards. Every query filters on owner_id, as vocabulary's do, so
 // someone else's word behaves exactly like a missing one.
-// The words due on or before @today with their schedules, longest overdue
-// first.
+//
+// A word has a Serbian-to-English card (sr_en) from its first review and an
+// English-to-Serbian one (en_sr) once the first is learned. A word shows one
+// of them a day, so that one card does not give away the answer to the
+// other: a card waits for tomorrow while the other card of its word was
+// reviewed today.
+// The cards due on or before @today with their words, longest overdue
+// first, at most one per word. A card is left out while the other card of
+// its word was reviewed today, or is due as well and comes first in this order;
+// once that one is answered, this one waits for tomorrow. (A card reviewed
+// today and due again does not give way: it was the card of the day.)
 func (q *Queries) ListDueReviewCards(ctx context.Context, arg ListDueReviewCardsParams) ([]ListDueReviewCardsRow, error) {
-	rows, err := q.db.Query(ctx, listDueReviewCards, arg.OwnerID, arg.Today, arg.RowLimit)
+	rows, err := q.db.Query(ctx, listDueReviewCards,
+		arg.OwnerID,
+		arg.Today,
+		arg.DayStart,
+		arg.RowLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -149,12 +229,85 @@ func (q *Queries) ListDueReviewCards(ctx context.Context, arg ListDueReviewCards
 			&i.VocabularyEntry.FeminineForm,
 			&i.VocabularyEntry.NeuterForm,
 			&i.VocabularyEntry.SourceAnnotationID,
+			&i.Direction,
 			&i.DueOn,
 			&i.IntervalDays,
 			&i.EasePercent,
 			&i.Repetitions,
 			&i.Lapses,
 			&i.LastReviewedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listNewRecallEntries = `-- name: ListNewRecallEntries :many
+SELECT v.id, v.owner_id, v.term, v.translation, v.notes, v.created_at, v.updated_at, v.part_of_speech, v.example, v.gender, v.plural, v.aspect, v.aspect_pair, v.feminine_form, v.neuter_form, v.source_annotation_id
+FROM review_cards c
+JOIN vocabulary_entries v ON v.id = c.entry_id
+WHERE c.owner_id = $1
+  AND c.direction = 'sr_en'
+  AND c.repetitions >= $2
+  AND c.due_on > $3
+  AND c.last_reviewed_at < $4
+  AND NOT EXISTS (SELECT 1 FROM review_cards r WHERE r.entry_id = c.entry_id AND r.direction = 'en_sr')
+ORDER BY c.created_at, c.entry_id
+LIMIT $5
+`
+
+type ListNewRecallEntriesParams struct {
+	OwnerID        string
+	MinRepetitions int32
+	Today          time.Time
+	DayStart       time.Time
+	RowLimit       int32
+}
+
+type ListNewRecallEntriesRow struct {
+	VocabularyEntry VocabularyEntry
+}
+
+// Words ready for their first English-to-Serbian card, those learned first
+// first: their Serbian-to-English card was remembered @min_repetitions times
+// in a row and is neither due nor reviewed today.
+func (q *Queries) ListNewRecallEntries(ctx context.Context, arg ListNewRecallEntriesParams) ([]ListNewRecallEntriesRow, error) {
+	rows, err := q.db.Query(ctx, listNewRecallEntries,
+		arg.OwnerID,
+		arg.MinRepetitions,
+		arg.Today,
+		arg.DayStart,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListNewRecallEntriesRow
+	for rows.Next() {
+		var i ListNewRecallEntriesRow
+		if err := rows.Scan(
+			&i.VocabularyEntry.ID,
+			&i.VocabularyEntry.OwnerID,
+			&i.VocabularyEntry.Term,
+			&i.VocabularyEntry.Translation,
+			&i.VocabularyEntry.Notes,
+			&i.VocabularyEntry.CreatedAt,
+			&i.VocabularyEntry.UpdatedAt,
+			&i.VocabularyEntry.PartOfSpeech,
+			&i.VocabularyEntry.Example,
+			&i.VocabularyEntry.Gender,
+			&i.VocabularyEntry.Plural,
+			&i.VocabularyEntry.Aspect,
+			&i.VocabularyEntry.AspectPair,
+			&i.VocabularyEntry.FeminineForm,
+			&i.VocabularyEntry.NeuterForm,
+			&i.VocabularyEntry.SourceAnnotationID,
 		); err != nil {
 			return nil, err
 		}
@@ -221,10 +374,10 @@ func (q *Queries) ListNewReviewEntries(ctx context.Context, arg ListNewReviewEnt
 const recordReview = `-- name: RecordReview :one
 WITH card AS (
     INSERT INTO review_cards (
-        entry_id, owner_id, due_on, interval_days, ease_percent, repetitions, lapses, last_reviewed_at
+        entry_id, direction, owner_id, due_on, interval_days, ease_percent, repetitions, lapses, last_reviewed_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, now())
-    ON CONFLICT (entry_id) DO UPDATE
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+    ON CONFLICT (entry_id, direction) DO UPDATE
     SET due_on           = EXCLUDED.due_on,
         interval_days    = EXCLUDED.interval_days,
         ease_percent     = EXCLUDED.ease_percent,
@@ -232,19 +385,20 @@ WITH card AS (
         lapses           = EXCLUDED.lapses,
         last_reviewed_at = EXCLUDED.last_reviewed_at
     WHERE review_cards.owner_id = EXCLUDED.owner_id
-      AND review_cards.last_reviewed_at IS NOT DISTINCT FROM $8::timestamptz
-    RETURNING entry_id, owner_id, due_on, interval_days, ease_percent, repetitions, lapses, last_reviewed_at, created_at
+      AND review_cards.last_reviewed_at IS NOT DISTINCT FROM $9::timestamptz
+    RETURNING entry_id, owner_id, due_on, interval_days, ease_percent, repetitions, lapses, last_reviewed_at, created_at, direction
 ), logged AS (
-    INSERT INTO reviews (owner_id, entry_id, rating, interval_days)
-    SELECT card.owner_id, card.entry_id, $9::review_rating, card.interval_days
+    INSERT INTO reviews (owner_id, entry_id, direction, rating, interval_days)
+    SELECT card.owner_id, card.entry_id, card.direction, $10::review_rating, card.interval_days
     FROM card
 )
-SELECT entry_id, owner_id, due_on, interval_days, ease_percent, repetitions, lapses, last_reviewed_at, created_at
+SELECT entry_id, owner_id, due_on, interval_days, ease_percent, repetitions, lapses, last_reviewed_at, created_at, direction
 FROM card
 `
 
 type RecordReviewParams struct {
 	EntryID        string
+	Direction      ReviewDirection
 	OwnerID        string
 	DueOn          time.Time
 	IntervalDays   int32
@@ -265,15 +419,17 @@ type RecordReviewRow struct {
 	Lapses         int32
 	LastReviewedAt time.Time
 	CreatedAt      time.Time
+	Direction      ReviewDirection
 }
 
-// Saves a word's new schedule and logs the answer in one statement, so
+// Saves a card's new schedule and logs the answer in one statement, so
 // both happen or neither. The schedule is replaced only if it is still the
-// one the service read (@read_reviewed_at, NULL for a new word); if another
+// one the service read (@read_reviewed_at, NULL for a new card); if another
 // answer got there first, nothing changes and no row comes back.
 func (q *Queries) RecordReview(ctx context.Context, arg RecordReviewParams) (RecordReviewRow, error) {
 	row := q.db.QueryRow(ctx, recordReview,
 		arg.EntryID,
+		arg.Direction,
 		arg.OwnerID,
 		arg.DueOn,
 		arg.IntervalDays,
@@ -294,6 +450,7 @@ func (q *Queries) RecordReview(ctx context.Context, arg RecordReviewParams) (Rec
 		&i.Lapses,
 		&i.LastReviewedAt,
 		&i.CreatedAt,
+		&i.Direction,
 	)
 	return i, err
 }

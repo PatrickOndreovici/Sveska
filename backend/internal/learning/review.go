@@ -24,6 +24,16 @@ const (
 	RatingEasy  Rating = "easy"
 )
 
+// Direction is which way round a card goes. Every word has a Serbian →
+// English card; once that one is learned, it gets an English → Serbian card
+// too, with a schedule of its own.
+type Direction string
+
+const (
+	SerbianToEnglish Direction = "sr_en" // the Serbian word shown, its meaning recalled
+	EnglishToSerbian Direction = "en_sr" // the meaning shown, the Serbian word typed
+)
+
 // NextIntervals is how many days away each answer would put a word, shown
 // on the answer buttons.
 type NextIntervals struct {
@@ -33,20 +43,24 @@ type NextIntervals struct {
 	Easy  int
 }
 
-// ReviewCard is a word to review with what each answer would do.
+// ReviewCard is a word to review, which way round, with what each answer
+// would do.
 type ReviewCard struct {
 	Entry         VocabularyEntry
-	New           bool // never reviewed before
+	Direction     Direction
+	New           bool // never reviewed this way round before
 	NextIntervals NextIntervals
 }
 
 // ReviewQueue is what a student has to review today, in the order to show
-// it: words due first, longest overdue first, then new words, oldest first.
+// it: cards due first, longest overdue first, then the first English →
+// Serbian cards of words learned the other way, then new words, oldest
+// first. A word has at most one card in it.
 type ReviewQueue struct {
 	Today string
 	Cards []ReviewCard // at most reviewBatch; ask again once they are answered
 	Due   int          // words due today in all, Cards included
-	New   int          // new words to learn today in all, Cards included
+	New   int          // new cards to start today in all, of both kinds, Cards included
 	// NextDueOn is the first day after today with words to review, or nil
 	// when there are no words at all.
 	NextDueOn *string
@@ -54,13 +68,15 @@ type ReviewQueue struct {
 
 // ReviewInput is an answer to one card.
 type ReviewInput struct {
-	Rating   Rating
-	TimeZone string // see DashboardService.Get
+	Direction Direction
+	Rating    Rating
+	TimeZone  string // see DashboardService.Get
 }
 
-// ReviewResult is when a word comes back after an answer.
+// ReviewResult is when a card comes back after an answer.
 type ReviewResult struct {
 	EntryID      string
+	Direction    Direction
 	Rating       Rating
 	DueOn        string
 	IntervalDays int
@@ -69,6 +85,13 @@ type ReviewResult struct {
 const (
 	// newWordsPerDay keeps a long list of words from arriving all at once.
 	newWordsPerDay = 20
+	// recallAfter is how many times in a row a word must be remembered
+	// Serbian → English before it gets an English → Serbian card, so that
+	// nobody is asked to write a word they have seen once.
+	recallAfter = 2
+	// newRecallPerDay is the daily limit of new English → Serbian cards, so
+	// that words learned before they existed do not all arrive at once.
+	newRecallPerDay = 20
 	// reviewBatch is how many cards one request returns.
 	reviewBatch = 50
 )
@@ -78,6 +101,7 @@ type ReviewStore interface {
 	GetReviewCounts(ctx context.Context, arg store.GetReviewCountsParams) (store.GetReviewCountsRow, error)
 	ListDueReviewCards(ctx context.Context, arg store.ListDueReviewCardsParams) ([]store.ListDueReviewCardsRow, error)
 	ListNewReviewEntries(ctx context.Context, arg store.ListNewReviewEntriesParams) ([]store.VocabularyEntry, error)
+	ListNewRecallEntries(ctx context.Context, arg store.ListNewRecallEntriesParams) ([]store.ListNewRecallEntriesRow, error)
 	GetNextReviewDate(ctx context.Context, arg store.GetNextReviewDateParams) (time.Time, error)
 	GetVocabularyEntry(ctx context.Context, arg store.GetVocabularyEntryParams) (store.VocabularyEntry, error)
 	GetReviewCard(ctx context.Context, arg store.GetReviewCardParams) (store.ReviewCard, error)
@@ -98,7 +122,7 @@ func NewReviewService(s ReviewStore) *ReviewService {
 }
 
 var errReviewConflict = apperr.New(apperr.Conflict, "review_conflict",
-	"This word was just reviewed somewhere else. Go on with the next one.")
+	"This card was just reviewed somewhere else. Go on with the next one.")
 
 // Queue returns what the student has to review today in timeZone.
 func (s *ReviewService) Queue(ctx context.Context, timeZone string) (ReviewQueue, error) {
@@ -113,58 +137,79 @@ func (s *ReviewService) Queue(ctx context.Context, timeZone string) (ReviewQueue
 	ownerID := actor.User.ID
 	today := day.date()
 
-	counts, err := s.store.GetReviewCounts(ctx, store.GetReviewCountsParams{
-		OwnerID: ownerID, Today: today, DayStart: day.start,
-	})
+	counts, err := s.store.GetReviewCounts(ctx, reviewCountsParams(ownerID, day))
 	if err != nil {
 		return ReviewQueue{}, fmt.Errorf("get review counts: %w", err)
 	}
-	newToday := newWordsLeft(counts)
+	newToday, recallToday := newWordsLeft(counts), newRecallLeft(counts)
 
 	dueRows, err := s.store.ListDueReviewCards(ctx, store.ListDueReviewCardsParams{
-		OwnerID: ownerID, Today: today, RowLimit: reviewBatch,
+		OwnerID: ownerID, Today: today, DayStart: day.start, RowLimit: reviewBatch,
 	})
 	if err != nil {
 		return ReviewQueue{}, fmt.Errorf("list due review cards: %w", err)
 	}
+	room := reviewBatch - len(dueRows)
+	// English → Serbian cards come before new words: their words are known.
+	var recallRows []store.ListNewRecallEntriesRow
+	if n := min(recallToday, room); n > 0 {
+		recallRows, err = s.store.ListNewRecallEntries(ctx, store.ListNewRecallEntriesParams{
+			OwnerID: ownerID, MinRepetitions: recallAfter, Today: today, DayStart: day.start, RowLimit: int32(n),
+		})
+		if err != nil {
+			return ReviewQueue{}, fmt.Errorf("list new recall entries: %w", err)
+		}
+		room -= len(recallRows)
+	}
 	var newRows []store.VocabularyEntry
-	if room := min(newToday, reviewBatch-len(dueRows)); room > 0 {
+	if n := min(newToday, room); n > 0 {
 		newRows, err = s.store.ListNewReviewEntries(ctx, store.ListNewReviewEntriesParams{
-			OwnerID: ownerID, RowLimit: int32(room),
+			OwnerID: ownerID, RowLimit: int32(n),
 		})
 		if err != nil {
 			return ReviewQueue{}, fmt.Errorf("list new review entries: %w", err)
 		}
 	}
 
-	entries := make([]VocabularyEntry, 0, len(dueRows)+len(newRows))
-	schedules := make([]schedule, 0, cap(entries))
+	size := len(dueRows) + len(recallRows) + len(newRows)
+	entries := make([]VocabularyEntry, 0, size)
+	cards := make([]ReviewCard, 0, size) // each card's Entry comes from entries, once sources are added
 	for _, r := range dueRows {
 		entries = append(entries, entryFromRow(r.VocabularyEntry))
-		schedules = append(schedules, schedule{
-			IntervalDays: int(r.IntervalDays), EasePercent: int(r.EasePercent),
-			Repetitions: int(r.Repetitions), Lapses: int(r.Lapses),
+		cards = append(cards, ReviewCard{
+			Direction: Direction(r.Direction),
+			NextIntervals: schedule{
+				IntervalDays: int(r.IntervalDays), EasePercent: int(r.EasePercent),
+				Repetitions: int(r.Repetitions), Lapses: int(r.Lapses),
+			}.nextIntervals(),
 		})
+	}
+	for _, r := range recallRows {
+		entries = append(entries, entryFromRow(r.VocabularyEntry))
+		cards = append(cards, ReviewCard{Direction: EnglishToSerbian, New: true, NextIntervals: newCard.nextIntervals()})
 	}
 	for _, r := range newRows {
 		entries = append(entries, entryFromRow(r))
-		schedules = append(schedules, newCard)
+		cards = append(cards, ReviewCard{Direction: SerbianToEnglish, New: true, NextIntervals: newCard.nextIntervals()})
 	}
 	if err := addSources(ctx, s.store, ownerID, entries); err != nil {
 		return ReviewQueue{}, err
 	}
+	for i := range cards {
+		cards[i].Entry = entries[i]
+	}
 
 	q := ReviewQueue{
 		Today: today.Format(time.DateOnly),
-		Cards: make([]ReviewCard, len(entries)),
+		Cards: cards,
 		Due:   int(counts.Due),
-		New:   newToday,
-	}
-	for i, e := range entries {
-		q.Cards[i] = ReviewCard{Entry: e, New: i >= len(dueRows), NextIntervals: schedules[i].nextIntervals()}
+		New:   newToday + recallToday,
 	}
 
-	next, err := s.store.GetNextReviewDate(ctx, store.GetNextReviewDateParams{OwnerID: ownerID, Today: today})
+	tomorrow := today.AddDate(0, 0, 1)
+	next, err := s.store.GetNextReviewDate(ctx, store.GetNextReviewDateParams{
+		OwnerID: ownerID, Tomorrow: tomorrow, DayStart: day.start,
+	})
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 	case err != nil:
@@ -173,14 +218,22 @@ func (s *ReviewService) Queue(ctx context.Context, timeZone string) (ReviewQueue
 		date := next.Format(time.DateOnly)
 		q.NextDueOn = &date
 	}
-	// New words left over for lack of room today come tomorrow.
-	if int(counts.Unseen) > newToday {
-		tomorrow := today.AddDate(0, 0, 1).Format(time.DateOnly)
-		if q.NextDueOn == nil || tomorrow < *q.NextDueOn {
-			q.NextDueOn = &tomorrow
+	// New cards left over today, for lack of room or as the other card of
+	// their word was reviewed today, come tomorrow.
+	if int(counts.Unseen) > newToday || int(counts.RecallWaiting) > recallToday {
+		date := tomorrow.Format(time.DateOnly)
+		if q.NextDueOn == nil || date < *q.NextDueOn {
+			q.NextDueOn = &date
 		}
 	}
 	return q, nil
+}
+
+// reviewCountsParams asks for the student's counts on day.
+func reviewCountsParams(ownerID string, day localDay) store.GetReviewCountsParams {
+	return store.GetReviewCountsParams{
+		OwnerID: ownerID, Today: day.date(), DayStart: day.start, MinRepetitions: recallAfter,
+	}
 }
 
 // newWordsLeft is how many new words can still be learned today.
@@ -188,8 +241,14 @@ func newWordsLeft(c store.GetReviewCountsRow) int {
 	return max(0, min(newWordsPerDay-int(c.StartedToday), int(c.Unseen)))
 }
 
-// Record saves the answer to one of the current student's words and
-// schedules the word's next review.
+// newRecallLeft is how many words can still get their first English →
+// Serbian card today.
+func newRecallLeft(c store.GetReviewCountsRow) int {
+	return max(0, min(newRecallPerDay-int(c.RecallStartedToday), int(c.RecallReady)))
+}
+
+// Record saves the answer to one of the current student's cards and
+// schedules the card's next review.
 func (s *ReviewService) Record(ctx context.Context, entryID string, in ReviewInput) (ReviewResult, error) {
 	actor, err := access.RequireStudent(ctx)
 	if err != nil {
@@ -198,8 +257,15 @@ func (s *ReviewService) Record(ctx context.Context, entryID string, in ReviewInp
 	if !isUUID(entryID) {
 		return ReviewResult{}, errEntryNotFound
 	}
+	fields := map[string]string{}
+	if !in.Direction.valid() {
+		fields["direction"] = "Choose sr_en or en_sr."
+	}
 	if !in.Rating.valid() {
-		return ReviewResult{}, apperr.Validation(map[string]string{"rating": "Choose again, hard, good or easy."})
+		fields["rating"] = "Choose again, hard, good or easy."
+	}
+	if len(fields) > 0 {
+		return ReviewResult{}, apperr.Validation(fields)
 	}
 	day, err := currentDay(in.TimeZone, s.now())
 	if err != nil {
@@ -217,7 +283,9 @@ func (s *ReviewService) Record(ctx context.Context, entryID string, in ReviewInp
 
 	current := newCard
 	var readReviewedAt *time.Time
-	card, err := s.store.GetReviewCard(ctx, store.GetReviewCardParams{EntryID: entryID, OwnerID: ownerID})
+	card, err := s.store.GetReviewCard(ctx, store.GetReviewCardParams{
+		EntryID: entryID, Direction: store.ReviewDirection(in.Direction), OwnerID: ownerID,
+	})
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 	case err != nil:
@@ -234,6 +302,7 @@ func (s *ReviewService) Record(ctx context.Context, entryID string, in ReviewInp
 	dueOn := day.date().AddDate(0, 0, next.IntervalDays)
 	_, err = s.store.RecordReview(ctx, store.RecordReviewParams{
 		EntryID:        entryID,
+		Direction:      store.ReviewDirection(in.Direction),
 		OwnerID:        ownerID,
 		DueOn:          dueOn,
 		IntervalDays:   int32(next.IntervalDays),
@@ -254,6 +323,7 @@ func (s *ReviewService) Record(ctx context.Context, entryID string, in ReviewInp
 	}
 	return ReviewResult{
 		EntryID:      entryID,
+		Direction:    in.Direction,
 		Rating:       in.Rating,
 		DueOn:        dueOn.Format(time.DateOnly),
 		IntervalDays: next.IntervalDays,
@@ -264,6 +334,10 @@ const (
 	reviewCardEntryFkey = "review_cards_entry_fkey"
 	reviewEntryFkey     = "reviews_entry_fkey"
 )
+
+func (d Direction) valid() bool {
+	return d == SerbianToEnglish || d == EnglishToSerbian
+}
 
 func (r Rating) valid() bool {
 	switch r {

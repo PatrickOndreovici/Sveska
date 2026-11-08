@@ -24,6 +24,7 @@ type nextIntervalsResponse struct {
 
 type reviewCardResponse struct {
 	Entry         entryResponse         `json:"entry"`
+	Direction     string                `json:"direction"`
 	New           bool                  `json:"new"`
 	NextIntervals nextIntervalsResponse `json:"nextIntervals"`
 }
@@ -38,12 +39,14 @@ type reviewQueueResponse struct {
 
 // reviewRequest is the body of POST /api/vocabulary/{id}/reviews.
 type reviewRequest struct {
-	Rating   string `json:"rating"`
-	TimeZone string `json:"timeZone"`
+	Direction string `json:"direction"`
+	Rating    string `json:"rating"`
+	TimeZone  string `json:"timeZone"`
 }
 
 type reviewResponse struct {
 	EntryID      string `json:"entryId"`
+	Direction    string `json:"direction"`
 	Rating       string `json:"rating"`
 	DueOn        string `json:"dueOn"`
 	IntervalDays int    `json:"intervalDays"`
@@ -69,6 +72,7 @@ func (a *api) getReviewQueue(w http.ResponseWriter, r *http.Request) {
 	for _, c := range q.Cards {
 		resp.Cards = append(resp.Cards, reviewCardResponse{
 			Entry:         toEntryResponse(c.Entry),
+			Direction:     string(c.Direction),
 			New:           c.New,
 			NextIntervals: nextIntervalsResponse(c.NextIntervals),
 		})
@@ -83,8 +87,9 @@ func (a *api) createReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := a.reviews.Record(r.Context(), chi.URLParam(r, "id"), learning.ReviewInput{
-		Rating:   learning.Rating(req.Rating),
-		TimeZone: req.TimeZone,
+		Direction: learning.Direction(req.Direction),
+		Rating:    learning.Rating(req.Rating),
+		TimeZone:  req.TimeZone,
 	})
 	if err != nil {
 		writeServiceError(w, r, err)
@@ -92,6 +97,7 @@ func (a *api) createReview(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusCreated, reviewEnvelope{Review: reviewResponse{
 		EntryID:      res.EntryID,
+		Direction:    string(res.Direction),
 		Rating:       string(res.Rating),
 		DueOn:        res.DueOn,
 		IntervalDays: res.IntervalDays,

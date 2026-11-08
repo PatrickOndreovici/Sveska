@@ -46,6 +46,7 @@ export type ActivityDay = Schemas["ActivityDay"];
 export type RecentWord = Schemas["RecentWord"];
 export type RecentDocument = Schemas["RecentDocument"];
 export type ReviewCounts = Schemas["ReviewCounts"];
+export type ReviewDirection = Schemas["ReviewDirection"];
 export type ReviewRating = Schemas["ReviewRating"];
 export type ReviewInput = Schemas["ReviewInput"];
 export type Review = Schemas["Review"];

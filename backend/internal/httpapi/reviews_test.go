@@ -32,6 +32,7 @@ func (f *fakeReviews) Queue(_ context.Context, timeZone string) (learning.Review
 				CreatedAt:   testTime,
 				UpdatedAt:   testTime,
 			},
+			Direction:     learning.EnglishToSerbian,
 			New:           true,
 			NextIntervals: learning.NextIntervals{Again: 0, Hard: 1, Good: 2, Easy: 4},
 		}},
@@ -45,7 +46,7 @@ func (f *fakeReviews) Record(_ context.Context, id string, in learning.ReviewInp
 	f.calls++
 	f.lastEntryID = id
 	f.lastInput = in
-	return learning.ReviewResult{EntryID: id, Rating: in.Rating, DueOn: "2026-10-25", IntervalDays: 2}, f.err
+	return learning.ReviewResult{EntryID: id, Direction: in.Direction, Rating: in.Rating, DueOn: "2026-10-25", IntervalDays: 2}, f.err
 }
 
 func newReviewRouter(r *fakeReviews) http.Handler {
@@ -84,6 +85,7 @@ func TestReviewQueueResponse(t *testing.T) {
 				"feminineForm": "", "neuterForm": "", "source": nil,
 				"createdAt": "2026-10-23T12:00:00Z", "updatedAt": "2026-10-23T12:00:00Z",
 			},
+			"direction":     "en_sr",
 			"new":           true,
 			"nextIntervals": map[string]any{"again": 0.0, "hard": 1.0, "good": 2.0, "easy": 4.0},
 		}},
@@ -100,19 +102,19 @@ func TestReviewQueueResponse(t *testing.T) {
 
 func TestCreateReview(t *testing.T) {
 	r := &fakeReviews{}
-	o := loggedIn(`{"rating":"good","timeZone":"Europe/Belgrade"}`)
+	o := loggedIn(`{"direction":"en_sr","rating":"good","timeZone":"Europe/Belgrade"}`)
 	rec := do(t, newReviewRouter(r), http.MethodPost, "/api/vocabulary/"+entryID+"/reviews", o)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
 	}
-	if want := (learning.ReviewInput{Rating: learning.RatingGood, TimeZone: "Europe/Belgrade"}); r.lastEntryID != entryID || r.lastInput != want {
+	if want := (learning.ReviewInput{Direction: learning.EnglishToSerbian, Rating: learning.RatingGood, TimeZone: "Europe/Belgrade"}); r.lastEntryID != entryID || r.lastInput != want {
 		t.Errorf("recorded %s %+v", r.lastEntryID, r.lastInput)
 	}
 	var got reviewEnvelope
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
-	if want := (reviewResponse{EntryID: entryID, Rating: "good", DueOn: "2026-10-25", IntervalDays: 2}); got.Review != want {
+	if want := (reviewResponse{EntryID: entryID, Direction: "en_sr", Rating: "good", DueOn: "2026-10-25", IntervalDays: 2}); got.Review != want {
 		t.Errorf("review = %+v, want %+v", got.Review, want)
 	}
 }

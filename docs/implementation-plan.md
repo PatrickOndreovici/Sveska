@@ -46,6 +46,13 @@ light and dark with a Light/Dark/System switch), Sveska logo and favicon, UI pri
 - Flashcards from the vocabulary with spaced repetition (built ahead of the
   quizzes): a review page with today's words, due words first and then up
   to 20 new ones a day, and a count of them on the dashboard.
+- Flashcards the other way round, English → Serbian, answered by typing the
+  Serbian word: a second card per word with its own schedule, which starts
+  once the Serbian → English card has been remembered twice in a row, up to
+  20 a day. The page compares the typed answer with the word and suggests a
+  rating: good when right, hard when only a č, ć, š, ž or đ is off, again
+  when wrong. A word shows one direction a day. Buttons for č ć š ž đ next
+  to Serbian inputs, for keyboards without them.
 - Quiz authoring, attempts, automatic scoring for multiple choice, manual
   marking for short answers.
 - Lesson progress and a progress overview derived from stored data.

@@ -3,6 +3,7 @@ package learning
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -99,20 +100,23 @@ func TestScheduleEaseHasAFloor(t *testing.T) {
 // queries with fixed rows.
 type fakeReviewStore struct {
 	entries map[string]store.VocabularyEntry
-	cards   map[string]store.ReviewCard
+	cards   map[string]store.ReviewCard // by cardKey
 
 	counts   store.GetReviewCountsRow
 	due      []store.ListDueReviewCardsRow
+	recall   []store.VocabularyEntry // words ready for an English → Serbian card
 	fresh    []store.VocabularyEntry
 	nextDate *time.Time
 
 	recordErr error // returned by RecordReview instead of saving
 
-	countArgs store.GetReviewCountsParams
-	dueArgs   store.ListDueReviewCardsParams
-	newLimits []int32
-	recorded  []store.RecordReviewParams
-	ownerIDs  []string
+	countArgs  store.GetReviewCountsParams
+	dueArgs    store.ListDueReviewCardsParams
+	recallArgs []store.ListNewRecallEntriesParams
+	newLimits  []int32
+	nextArgs   store.GetNextReviewDateParams
+	recorded   []store.RecordReviewParams
+	ownerIDs   []string
 }
 
 func (f *fakeReviewStore) GetReviewCounts(_ context.Context, arg store.GetReviewCountsParams) (store.GetReviewCountsRow, error) {
@@ -133,8 +137,19 @@ func (f *fakeReviewStore) ListNewReviewEntries(_ context.Context, arg store.List
 	return f.fresh[:min(len(f.fresh), int(arg.RowLimit))], nil
 }
 
+func (f *fakeReviewStore) ListNewRecallEntries(_ context.Context, arg store.ListNewRecallEntriesParams) ([]store.ListNewRecallEntriesRow, error) {
+	f.ownerIDs = append(f.ownerIDs, arg.OwnerID)
+	f.recallArgs = append(f.recallArgs, arg)
+	var rows []store.ListNewRecallEntriesRow
+	for _, e := range f.recall[:min(len(f.recall), int(arg.RowLimit))] {
+		rows = append(rows, store.ListNewRecallEntriesRow{VocabularyEntry: e})
+	}
+	return rows, nil
+}
+
 func (f *fakeReviewStore) GetNextReviewDate(_ context.Context, arg store.GetNextReviewDateParams) (time.Time, error) {
 	f.ownerIDs = append(f.ownerIDs, arg.OwnerID)
+	f.nextArgs = arg
 	if f.nextDate == nil {
 		return time.Time{}, pgx.ErrNoRows
 	}
@@ -150,7 +165,7 @@ func (f *fakeReviewStore) GetVocabularyEntry(_ context.Context, arg store.GetVoc
 }
 
 func (f *fakeReviewStore) GetReviewCard(_ context.Context, arg store.GetReviewCardParams) (store.ReviewCard, error) {
-	c, ok := f.cards[arg.EntryID]
+	c, ok := f.cards[cardKey(arg.EntryID, arg.Direction)]
 	if !ok || c.OwnerID != arg.OwnerID {
 		return store.ReviewCard{}, pgx.ErrNoRows
 	}
@@ -174,6 +189,10 @@ func (f *fakeReviewStore) ListEntrySources(_ context.Context, arg store.ListEntr
 		})
 	}
 	return rows, nil
+}
+
+func cardKey(entryID string, d store.ReviewDirection) string {
+	return entryID + " " + string(d)
 }
 
 // newReviews is a service whose clock reads 23 October 2026, 22:30 UTC,
@@ -254,6 +273,92 @@ func TestReviewQueueHasDueWordsThenNewOnes(t *testing.T) {
 	}
 }
 
+func TestReviewQueueHasEnglishFirstCardsBeforeNewWords(t *testing.T) {
+	f := &fakeReviewStore{
+		counts: store.GetReviewCountsRow{Due: 1, Unseen: 1, RecallWaiting: 1, RecallReady: 1},
+		due: []store.ListDueReviewCardsRow{{
+			VocabularyEntry: word(kucaID, "kuća"), Direction: store.ReviewDirectionEnSr,
+			DueOn: date("2026-10-22"), IntervalDays: 10, EasePercent: 250, Repetitions: 3,
+		}},
+		recall: []store.VocabularyEntry{word(vodaID, "voda")},
+		fresh:  []store.VocabularyEntry{word(hlebID, "hleb")},
+	}
+	q, err := newReviews(f).Queue(actorCtx(anaID), "Europe/Belgrade")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type card struct {
+		term      string
+		direction Direction
+		new       bool
+	}
+	var got []card
+	for _, c := range q.Cards {
+		got = append(got, card{c.Entry.Term, c.Direction, c.New})
+	}
+	want := []card{{"kuća", EnglishToSerbian, false}, {"voda", EnglishToSerbian, true}, {"hleb", SerbianToEnglish, true}}
+	if !slices.Equal(got, want) {
+		t.Errorf("cards = %v, want %v", got, want)
+	}
+	if q.Due != 1 || q.New != 2 {
+		t.Errorf("due %d, new %d; want 1 and 2", q.Due, q.New)
+	}
+	if want := (NextIntervals{Again: 0, Hard: 1, Good: 2, Easy: 4}); q.Cards[1].NextIntervals != want {
+		t.Errorf("first English → Serbian card: next %+v, want %+v", q.Cards[1].NextIntervals, want)
+	}
+
+	belgrade, _ := time.LoadLocation("Europe/Belgrade")
+	midnight := time.Date(2026, 10, 24, 0, 0, 0, 0, belgrade)
+	if f.countArgs.MinRepetitions != recallAfter || !f.dueArgs.DayStart.Equal(midnight) {
+		t.Errorf("counts asked with %+v, due cards with %+v", f.countArgs, f.dueArgs)
+	}
+	if len(f.recallArgs) != 1 {
+		t.Fatalf("asked for words ready %d times", len(f.recallArgs))
+	}
+	if a := f.recallArgs[0]; a.MinRepetitions != recallAfter || !a.Today.Equal(date("2026-10-24")) || !a.DayStart.Equal(midnight) || a.RowLimit != 1 {
+		t.Errorf("words ready asked with %+v", a)
+	}
+}
+
+func TestReviewQueueLimitsNewEnglishFirstCardsPerDay(t *testing.T) {
+	tests := []struct {
+		name            string
+		counts          store.GetReviewCountsRow
+		due, ready      int // rows the store has
+		wantNew         int
+		wantRecallLimit []int32 // what ListNewRecallEntries was asked for
+		wantNewLimit    []int32 // and ListNewReviewEntries
+	}{
+		{"fewer than the limit", store.GetReviewCountsRow{RecallReady: 3}, 0, 3, 3, []int32{3}, nil},
+		{"more than the limit", store.GetReviewCountsRow{RecallReady: 100}, 0, 100, newRecallPerDay, []int32{newRecallPerDay}, nil},
+		{"some started today", store.GetReviewCountsRow{RecallReady: 100, RecallStartedToday: 15}, 0, 100, 5, []int32{5}, nil},
+		{"limit reached", store.GetReviewCountsRow{RecallReady: 100, RecallStartedToday: 25}, 0, 100, 0, nil, nil},
+		// Of the 5 places left in the batch, 3 go to known words.
+		{"before new words in the batch", store.GetReviewCountsRow{Due: 45, RecallReady: 3, Unseen: 100}, 45, 3,
+			3 + newWordsPerDay, []int32{3}, []int32{2}},
+	}
+	for _, tt := range tests {
+		f := &fakeReviewStore{
+			counts: tt.counts,
+			due:    make([]store.ListDueReviewCardsRow, tt.due),
+			recall: make([]store.VocabularyEntry, tt.ready),
+		}
+		q, err := newReviews(f).Queue(actorCtx(anaID), "UTC")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var recallLimits []int32
+		for _, a := range f.recallArgs {
+			recallLimits = append(recallLimits, a.RowLimit)
+		}
+		if q.New != tt.wantNew || !slices.Equal(recallLimits, tt.wantRecallLimit) || !slices.Equal(f.newLimits, tt.wantNewLimit) {
+			t.Errorf("%s: new = %d, asked for %v and %v; want %d, %v and %v",
+				tt.name, q.New, recallLimits, f.newLimits, tt.wantNew, tt.wantRecallLimit, tt.wantNewLimit)
+		}
+	}
+}
+
 func TestReviewQueueLimitsNewWordsPerDay(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -296,6 +401,9 @@ func TestReviewQueueSaysWhenToComeBack(t *testing.T) {
 		{"new words left, nothing scheduled", store.GetReviewCountsRow{Unseen: 30, StartedToday: 20}, nil, "2026-10-24"},
 		{"all new words fit today", store.GetReviewCountsRow{Unseen: 3}, &later, "2026-10-30"},
 		{"a word due tomorrow anyway", store.GetReviewCountsRow{Unseen: 30}, &tomorrow, "2026-10-24"},
+		// Reviewed the other way today, or over the day's limit.
+		{"English-first cards left for tomorrow", store.GetReviewCountsRow{RecallWaiting: 2, RecallReady: 1}, &later, "2026-10-24"},
+		{"all English-first cards fit today", store.GetReviewCountsRow{RecallWaiting: 2, RecallReady: 2}, &later, "2026-10-30"},
 	}
 	for _, tt := range tests {
 		q, err := newReviews(&fakeReviewStore{counts: tt.counts, nextDate: tt.nextDate}).Queue(actorCtx(anaID), "UTC")
@@ -309,6 +417,14 @@ func TestReviewQueueSaysWhenToComeBack(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("%s: next due on %q, want %q", tt.name, got, tt.want)
 		}
+	}
+
+	f := &fakeReviewStore{}
+	if _, err := newReviews(f).Queue(actorCtx(anaID), "UTC"); err != nil {
+		t.Fatal(err)
+	}
+	if a := f.nextArgs; !a.Tomorrow.Equal(tomorrow) || !a.DayStart.Equal(time.Date(2026, 10, 23, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("next date asked with %+v", a)
 	}
 }
 
@@ -324,12 +440,12 @@ func TestReviewQueueIsEmptyNotNil(t *testing.T) {
 
 func TestRecordReviewOfANewWord(t *testing.T) {
 	f := &fakeReviewStore{entries: map[string]store.VocabularyEntry{vodaID: word(vodaID, "voda")}}
-	res, err := newReviews(f).Record(actorCtx(anaID), vodaID, ReviewInput{Rating: RatingGood, TimeZone: "Europe/Belgrade"})
+	res, err := newReviews(f).Record(actorCtx(anaID), vodaID, ReviewInput{Direction: SerbianToEnglish, Rating: RatingGood, TimeZone: "Europe/Belgrade"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Today is 24 October in Belgrade; good on a new word is 2 days.
-	want := ReviewResult{EntryID: vodaID, Rating: RatingGood, DueOn: "2026-10-26", IntervalDays: 2}
+	want := ReviewResult{EntryID: vodaID, Direction: SerbianToEnglish, Rating: RatingGood, DueOn: "2026-10-26", IntervalDays: 2}
 	if res != want {
 		t.Errorf("result = %+v, want %+v", res, want)
 	}
@@ -337,7 +453,7 @@ func TestRecordReviewOfANewWord(t *testing.T) {
 		t.Fatalf("recorded %d reviews", len(f.recorded))
 	}
 	got := f.recorded[0]
-	if got.OwnerID != anaID || got.ReadReviewedAt != nil || got.Rating != store.ReviewRatingGood ||
+	if got.OwnerID != anaID || got.Direction != store.ReviewDirectionSrEn || got.ReadReviewedAt != nil || got.Rating != store.ReviewRatingGood ||
 		got.EasePercent != startEase || got.Repetitions != 1 || !got.DueOn.Equal(date("2026-10-26")) {
 		t.Errorf("recorded %+v", got)
 	}
@@ -347,12 +463,12 @@ func TestRecordReviewOfAWordSeenBefore(t *testing.T) {
 	last := time.Date(2026, 10, 13, 8, 0, 0, 123000, time.UTC)
 	f := &fakeReviewStore{
 		entries: map[string]store.VocabularyEntry{kucaID: word(kucaID, "kuća")},
-		cards: map[string]store.ReviewCard{kucaID: {
-			EntryID: kucaID, OwnerID: anaID, IntervalDays: 10, EasePercent: 250, Repetitions: 3, Lapses: 1,
+		cards: map[string]store.ReviewCard{cardKey(kucaID, store.ReviewDirectionSrEn): {
+			EntryID: kucaID, Direction: store.ReviewDirectionSrEn, OwnerID: anaID, IntervalDays: 10, EasePercent: 250, Repetitions: 3, Lapses: 1,
 			LastReviewedAt: last,
 		}},
 	}
-	res, err := newReviews(f).Record(actorCtx(anaID), kucaID, ReviewInput{Rating: RatingAgain, TimeZone: "UTC"})
+	res, err := newReviews(f).Record(actorCtx(anaID), kucaID, ReviewInput{Direction: SerbianToEnglish, Rating: RatingAgain, TimeZone: "UTC"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,12 +485,34 @@ func TestRecordReviewOfAWordSeenBefore(t *testing.T) {
 	}
 }
 
+func TestRecordReviewKeepsEachDirectionApart(t *testing.T) {
+	// kuća is learned Serbian → English; English → Serbian it is new.
+	f := &fakeReviewStore{
+		entries: map[string]store.VocabularyEntry{kucaID: word(kucaID, "kuća")},
+		cards: map[string]store.ReviewCard{cardKey(kucaID, store.ReviewDirectionSrEn): {
+			EntryID: kucaID, Direction: store.ReviewDirectionSrEn, OwnerID: anaID,
+			IntervalDays: 10, EasePercent: 250, Repetitions: 3, LastReviewedAt: time.Now(),
+		}},
+	}
+	res, err := newReviews(f).Record(actorCtx(anaID), kucaID, ReviewInput{Direction: EnglishToSerbian, Rating: RatingGood, TimeZone: "UTC"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (ReviewResult{EntryID: kucaID, Direction: EnglishToSerbian, Rating: RatingGood, DueOn: "2026-10-25", IntervalDays: 2}); res != want {
+		t.Errorf("result = %+v, want %+v", res, want)
+	}
+	got := f.recorded[0]
+	if got.Direction != store.ReviewDirectionEnSr || got.ReadReviewedAt != nil || got.Repetitions != 1 {
+		t.Errorf("recorded %+v, want a new English → Serbian card", got)
+	}
+}
+
 func TestRecordReviewWhenAnotherAnswerGotThereFirst(t *testing.T) {
 	f := &fakeReviewStore{
 		entries:   map[string]store.VocabularyEntry{vodaID: word(vodaID, "voda")},
 		recordErr: pgx.ErrNoRows,
 	}
-	_, err := newReviews(f).Record(actorCtx(anaID), vodaID, ReviewInput{Rating: RatingGood})
+	_, err := newReviews(f).Record(actorCtx(anaID), vodaID, ReviewInput{Direction: SerbianToEnglish, Rating: RatingGood})
 	if !errors.Is(err, errReviewConflict) {
 		t.Errorf("err = %v, want a conflict", err)
 	}
@@ -395,7 +533,7 @@ func TestRecordReviewOfAMissingWord(t *testing.T) {
 		"deleted before a log": {id: vodaID, recordErr: &pgconn.PgError{Code: "23503", ConstraintName: reviewEntryFkey}},
 	} {
 		f := &fakeReviewStore{entries: entries, recordErr: tc.recordErr}
-		_, err := newReviews(f).Record(actorCtx(anaID), tc.id, ReviewInput{Rating: RatingGood})
+		_, err := newReviews(f).Record(actorCtx(anaID), tc.id, ReviewInput{Direction: SerbianToEnglish, Rating: RatingGood})
 		if !errors.Is(err, errEntryNotFound) {
 			t.Errorf("%s: err = %v, want not found", name, err)
 		}
@@ -405,9 +543,11 @@ func TestRecordReviewOfAMissingWord(t *testing.T) {
 func TestRecordReviewValidatesTheAnswer(t *testing.T) {
 	f := &fakeReviewStore{entries: map[string]store.VocabularyEntry{vodaID: word(vodaID, "voda")}}
 	for _, in := range []ReviewInput{
-		{Rating: ""},
-		{Rating: "perfect"},
-		{Rating: RatingGood, TimeZone: "Mars/Olympus"},
+		{Direction: SerbianToEnglish, Rating: ""},
+		{Direction: SerbianToEnglish, Rating: "perfect"},
+		{Direction: "", Rating: RatingGood},
+		{Direction: "both", Rating: RatingGood},
+		{Direction: EnglishToSerbian, Rating: RatingGood, TimeZone: "Mars/Olympus"},
 	} {
 		_, err := newReviews(f).Record(actorCtx(anaID), vodaID, in)
 		var appErr *apperr.Error
@@ -423,7 +563,7 @@ func TestRecordReviewValidatesTheAnswer(t *testing.T) {
 func TestReviewsAreForStudentsOnly(t *testing.T) {
 	f := &fakeReviewStore{entries: map[string]store.VocabularyEntry{vodaID: word(vodaID, "voda")}}
 	_, queueErr := newReviews(f).Queue(teacherCtx(), "UTC")
-	_, recordErr := newReviews(f).Record(teacherCtx(), vodaID, ReviewInput{Rating: RatingGood})
+	_, recordErr := newReviews(f).Record(teacherCtx(), vodaID, ReviewInput{Direction: SerbianToEnglish, Rating: RatingGood})
 	for _, err := range []error{queueErr, recordErr} {
 		var appErr *apperr.Error
 		if !errors.As(err, &appErr) || appErr.Kind != apperr.Forbidden {

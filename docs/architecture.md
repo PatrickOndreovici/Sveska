@@ -241,11 +241,19 @@ Rules:
 
 ## Flashcards
 
-- Every word in a student's vocabulary is a flashcard, Serbian side first.
-  `GET /api/review-queue` returns today's cards: words due, longest overdue
-  first, then up to 20 new words a day, oldest first, at most 50 at a time.
-  `POST /api/vocabulary/{id}/reviews` records an answer (again, hard, good,
-  easy) and schedules the word's next review (`learning.ReviewService`).
+- Every word in a student's vocabulary is a flashcard, Serbian side first
+  (`sr_en`). Once that card has been remembered twice in a row, the word
+  gets a second card, English side first (`en_sr`), answered by typing the
+  Serbian word; each card has its own schedule. `GET /api/review-queue`
+  returns today's cards: cards due, longest overdue first, then up to 20
+  new English-first cards a day, then up to 20 new words a day, oldest
+  first, at most 50 at a time. `POST /api/vocabulary/{id}/reviews` records
+  an answer to one of a word's cards (again, hard, good, easy) and
+  schedules that card's next review (`learning.ReviewService`).
+- A word shows one card a day, so that one does not give away the other's
+  answer: the queue holds at most one card per word, and a card waits for
+  tomorrow while the word's other card was reviewed today. A card answered
+  "again" still comes back the same day.
 - The schedule is a simplified SM-2, as Anki uses it, in whole days: a word
   not yet learned comes back in 1, 2 or 4 days; after that each answer
   stretches the interval by 1.2 (hard), the word's ease (good, 2.5 to start)
@@ -257,8 +265,16 @@ Rules:
   schedule is still the one that was read, so an answer sent twice (from two
   tabs) counts once; the second gets 409 `review_conflict`.
 - The review page (`/review`) shows the cards of one queue in order and asks
-  for the queue again once they are answered, which brings back the words
-  answered "again". Space shows the answer and 1–4 answer it.
+  for the queue again once they are answered, which brings back the cards
+  answered "again". Space shows the answer and 1–4 answer it. On an
+  English-first card the page checks the typed word itself
+  (`features/review/answer.ts`; the word is in the queue anyway) and
+  suggests a rating, which Enter takes: good when right, hard when only a
+  č, ć, š, ž or đ is off, again when wrong. Case, punctuation and a part in
+  brackets do not count.
+- Buttons for č ć š ž đ (`components/SerbianLetters.tsx`) sit by the typed
+  answer and in the vocabulary forms, where they type into the Serbian
+  field used last. They stay out of the tab order.
 
 ## Testing
 
