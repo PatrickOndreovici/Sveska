@@ -14,20 +14,42 @@ import (
 type Dependencies struct {
 	DB           Pinger
 	Auth         AuthService
+	Profile      ProfileService
+	Dashboard    DashboardService
 	Vocabulary   VocabularyService
+	Reviews      ReviewService
+	Lessons      LessonService
+	Annotations  AnnotationService
+	Drawings     DrawingService
 	AppOrigin    string
 	CookieSecure bool
 }
 
 type api struct {
 	auth         AuthService
+	profile      ProfileService
+	dashboard    DashboardService
 	vocabulary   VocabularyService
+	reviews      ReviewService
+	lessons      LessonService
+	annotations  AnnotationService
+	drawings     DrawingService
 	cookieSecure bool
 }
 
 // NewRouter builds the HTTP handler for the API.
 func NewRouter(deps Dependencies) http.Handler {
-	a := &api{auth: deps.Auth, vocabulary: deps.Vocabulary, cookieSecure: deps.CookieSecure}
+	a := &api{
+		auth:         deps.Auth,
+		profile:      deps.Profile,
+		dashboard:    deps.Dashboard,
+		vocabulary:   deps.Vocabulary,
+		reviews:      deps.Reviews,
+		lessons:      deps.Lessons,
+		annotations:  deps.Annotations,
+		drawings:     deps.Drawings,
+		cookieSecure: deps.CookieSecure,
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -58,11 +80,43 @@ func NewRouter(deps Dependencies) http.Handler {
 			r.Group(func(r chi.Router) {
 				r.Use(requireActor)
 				r.Get("/me", a.me)
+				r.Put("/me", a.updateMe)
+				r.Get("/me/avatar", a.getAvatar)
+				r.Put("/me/avatar", a.uploadAvatar)
+				r.Delete("/me/avatar", a.deleteAvatar)
+
+				r.Get("/dashboard", a.getDashboard)
 
 				r.Get("/vocabulary", a.listVocabulary)
 				r.Post("/vocabulary", a.createVocabularyEntry)
 				r.Put("/vocabulary/{id}", a.updateVocabularyEntry)
 				r.Delete("/vocabulary/{id}", a.deleteVocabularyEntry)
+				r.Post("/vocabulary/{id}/reviews", a.createReview)
+				r.Get("/review-queue", a.getReviewQueue)
+
+				r.Get("/lessons", a.listLessons)
+				r.Post("/lessons", a.createLesson)
+				r.Get("/lessons/{id}", a.getLesson)
+				r.Put("/lessons/{id}", a.updateLesson)
+				r.Delete("/lessons/{id}", a.deleteLesson)
+				r.Post("/lessons/{id}/documents", a.uploadDocument)
+
+				r.Get("/documents/{id}", a.getDocument)
+				r.Get("/documents/{id}/file", a.downloadDocument)
+				r.Delete("/documents/{id}", a.deleteDocument)
+				r.Get("/documents/{id}/annotations", a.listAnnotations)
+				r.Post("/documents/{id}/annotations", a.createAnnotation)
+				r.Get("/documents/{id}/strokes", a.listStrokes)
+				r.Post("/documents/{id}/strokes", a.createStroke)
+				r.Get("/documents/{id}/text-boxes", a.listTextBoxes)
+				r.Post("/documents/{id}/text-boxes", a.createTextBox)
+
+				r.Put("/annotations/{id}", a.updateAnnotation)
+				r.Delete("/annotations/{id}", a.deleteAnnotation)
+
+				r.Delete("/strokes/{id}", a.deleteStroke)
+				r.Put("/text-boxes/{id}", a.updateTextBox)
+				r.Delete("/text-boxes/{id}", a.deleteTextBox)
 			})
 		})
 	})

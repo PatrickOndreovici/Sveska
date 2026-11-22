@@ -22,20 +22,40 @@ import (
 // unique (owner, lower(term), translation) index. Search, date filtering and
 // ordering are SQL's job and are covered by the integration tests; List here
 // returns the owner's entries and records the parameters it was given.
+// Highlights that words can cite are in sources, with the composite
+// foreign key mirrored on insert.
 type fakeStore struct {
-	entries    map[string]store.VocabularyEntry // keyed by id
-	lastList   store.ListVocabularyEntriesParams
-	counts     []store.CountVocabularyEntriesParams
-	nextID     int
-	now        time.Time
-	storeCalls int
+	entries       map[string]store.VocabularyEntry // keyed by id
+	sources       map[string]fakeSource            // annotations, keyed by id
+	lastList      store.ListVocabularyEntriesParams
+	counts        []store.CountVocabularyEntriesParams
+	nextID        int
+	now           time.Time
+	storeCalls    int
+	sourceLookups int
+	// afterGetSource runs once GetAnnotationSource has answered, to delete
+	// the highlight before the insert as a concurrent request could.
+	afterGetSource func()
+}
+
+type fakeSource struct {
+	ownerID string
+	row     store.GetAnnotationSourceRow
 }
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
 		entries: map[string]store.VocabularyEntry{},
+		sources: map[string]fakeSource{},
 		now:     time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC),
 	}
+}
+
+// addSource stores a highlight on page 3 of a document titled "Čitanka".
+func (f *fakeStore) addSource(id, ownerID string) {
+	f.sources[id] = fakeSource{ownerID: ownerID, row: store.GetAnnotationSourceRow{
+		ID: id, DocumentID: "00000000-0000-7000-8000-0000000000d1", PageNumber: 3, DocumentTitle: "Čitanka",
+	}}
 }
 
 func (f *fakeStore) isDuplicate(ownerID, term, translation, exceptID string) bool {
@@ -54,16 +74,57 @@ func (f *fakeStore) CreateVocabularyEntry(_ context.Context, arg store.CreateVoc
 	if f.isDuplicate(arg.OwnerID, arg.Term, arg.Translation, "") {
 		return store.VocabularyEntry{}, errDuplicate
 	}
+	if id := arg.SourceAnnotationID; id != nil {
+		if src, ok := f.sources[*id]; !ok || src.ownerID != arg.OwnerID {
+			return store.VocabularyEntry{}, &pgconn.PgError{Code: "23503", ConstraintName: sourceAnnotationFkey}
+		}
+	}
 	f.nextID++
 	row := store.VocabularyEntry{
 		ID: fmt.Sprintf("00000000-0000-7000-8000-%012d", f.nextID), OwnerID: arg.OwnerID,
 		Term: arg.Term, Translation: arg.Translation, Notes: arg.Notes, Example: arg.Example,
 		PartOfSpeech: arg.PartOfSpeech, Gender: arg.Gender, Plural: arg.Plural,
 		Aspect: arg.Aspect, AspectPair: arg.AspectPair, FeminineForm: arg.FeminineForm, NeuterForm: arg.NeuterForm,
-		CreatedAt: f.now, UpdatedAt: f.now,
+		SourceAnnotationID: arg.SourceAnnotationID,
+		CreatedAt:          f.now, UpdatedAt: f.now,
 	}
 	f.entries[row.ID] = row
 	return row, nil
+}
+
+func (f *fakeStore) GetAnnotationSource(_ context.Context, arg store.GetAnnotationSourceParams) (store.GetAnnotationSourceRow, error) {
+	f.storeCalls++
+	src, ok := f.sources[arg.ID]
+	if !ok || src.ownerID != arg.OwnerID {
+		return store.GetAnnotationSourceRow{}, pgx.ErrNoRows
+	}
+	if f.afterGetSource != nil {
+		f.afterGetSource()
+	}
+	return src.row, nil
+}
+
+// ListEntrySources joins like the query: words whose highlight is gone are
+// left out, as the database would have cleared their link.
+func (f *fakeStore) ListEntrySources(_ context.Context, arg store.ListEntrySourcesParams) ([]store.ListEntrySourcesRow, error) {
+	f.storeCalls++
+	f.sourceLookups++
+	var rows []store.ListEntrySourcesRow
+	for _, id := range arg.EntryIds {
+		e, ok := f.entries[id]
+		if !ok || e.OwnerID != arg.OwnerID || e.SourceAnnotationID == nil {
+			continue
+		}
+		src, ok := f.sources[*e.SourceAnnotationID]
+		if !ok {
+			continue
+		}
+		rows = append(rows, store.ListEntrySourcesRow{
+			EntryID: e.ID, AnnotationID: src.row.ID, DocumentID: src.row.DocumentID,
+			PageNumber: src.row.PageNumber, DocumentTitle: src.row.DocumentTitle,
+		})
+	}
+	return rows, nil
 }
 
 func (f *fakeStore) ListVocabularyEntries(_ context.Context, arg store.ListVocabularyEntriesParams) ([]store.VocabularyEntry, error) {
@@ -127,7 +188,11 @@ const (
 )
 
 func actorCtx(userID string) context.Context {
-	return access.WithActor(context.Background(), access.Actor{User: identity.User{ID: userID}})
+	return access.WithActor(context.Background(), access.Actor{User: identity.User{ID: userID, Role: identity.RoleStudent}})
+}
+
+func teacherCtx() context.Context {
+	return access.WithActor(context.Background(), access.Actor{User: identity.User{ID: anaID, Role: identity.RoleTeacher}})
 }
 
 var kuca = EntryFields{
@@ -186,6 +251,144 @@ func TestCreateRequiresActor(t *testing.T) {
 	requireAppErr(t, err, apperr.Unauthenticated, "unauthenticated")
 	if fs.storeCalls != 0 {
 		t.Errorf("store called %d times, want 0", fs.storeCalls)
+	}
+}
+
+func TestVocabularyIsForStudentsOnly(t *testing.T) {
+	fs := newFakeStore()
+	svc := NewVocabularyService(fs)
+	ctx := teacherCtx()
+	checks := map[string]error{}
+	_, checks["create"] = svc.Create(ctx, kuca)
+	_, checks["create from annotation"] = svc.CreateFromAnnotation(ctx, missingID, kuca)
+	_, checks["list"] = svc.List(ctx, ListEntriesInput{})
+	_, checks["update"] = svc.Update(ctx, missingID, kuca)
+	checks["delete"] = svc.Delete(ctx, missingID)
+	for name, err := range checks {
+		t.Run(name, func(t *testing.T) {
+			requireAppErr(t, err, apperr.Forbidden, "students_only")
+		})
+	}
+	if fs.storeCalls != 0 {
+		t.Errorf("store called %d times, want 0", fs.storeCalls)
+	}
+}
+
+const highlightID = "00000000-0000-7000-8000-0000000000a1"
+
+func TestCreateFromAnnotationCitesTheHighlight(t *testing.T) {
+	fs := newFakeStore()
+	fs.addSource(highlightID, anaID)
+	svc := NewVocabularyService(fs)
+
+	entry, err := svc.CreateFromAnnotation(actorCtx(anaID), highlightID, kuca)
+	if err != nil {
+		t.Fatalf("CreateFromAnnotation: %v", err)
+	}
+	want := EntrySource{AnnotationID: highlightID, DocumentID: "00000000-0000-7000-8000-0000000000d1", DocumentTitle: "Čitanka", PageNumber: 3}
+	if entry.Source == nil || *entry.Source != want {
+		t.Errorf("source = %+v, want %+v", entry.Source, want)
+	}
+	if saved := fs.entries[entry.ID].SourceAnnotationID; saved == nil || *saved != highlightID {
+		t.Errorf("saved source_annotation_id = %v, want %s", saved, highlightID)
+	}
+}
+
+func TestCreateFromAnnotationNeedsTheUsersOwnHighlight(t *testing.T) {
+	cases := map[string]string{
+		"someone else's": highlightID,
+		"missing":        missingID,
+		"malformed":      "not-a-uuid",
+	}
+	for name, id := range cases {
+		t.Run(name, func(t *testing.T) {
+			fs := newFakeStore()
+			fs.addSource(highlightID, markoID)
+			_, err := NewVocabularyService(fs).CreateFromAnnotation(actorCtx(anaID), id, kuca)
+			requireAppErr(t, err, apperr.NotFound, "annotation_not_found")
+			if len(fs.entries) != 0 {
+				t.Errorf("%d entries saved, want 0", len(fs.entries))
+			}
+		})
+	}
+}
+
+func TestCreateFromAnnotationWhoseHighlightIsDeletedMeanwhile(t *testing.T) {
+	fs := newFakeStore()
+	fs.addSource(highlightID, anaID)
+	fs.afterGetSource = func() { delete(fs.sources, highlightID) }
+
+	_, err := NewVocabularyService(fs).CreateFromAnnotation(actorCtx(anaID), highlightID, kuca)
+	requireAppErr(t, err, apperr.NotFound, "annotation_not_found")
+}
+
+func TestCreateFromAnnotationChecksFieldsFirst(t *testing.T) {
+	fs := newFakeStore()
+	_, err := NewVocabularyService(fs).CreateFromAnnotation(actorCtx(anaID), missingID, EntryFields{Term: "kuća"})
+	requireAppErr(t, err, apperr.Invalid, "validation_failed")
+	if fs.storeCalls != 0 {
+		t.Errorf("store called %d times, want 0", fs.storeCalls)
+	}
+}
+
+func TestListAndUpdateIncludeSources(t *testing.T) {
+	fs := newFakeStore()
+	fs.addSource(highlightID, anaID)
+	const goneID = "00000000-0000-7000-8000-0000000000a2"
+	fs.addSource(goneID, anaID)
+	svc := NewVocabularyService(fs)
+	ctx := actorCtx(anaID)
+	cited, err := svc.CreateFromAnnotation(ctx, highlightID, kuca)
+	if err != nil {
+		t.Fatal(err)
+	}
+	orphan, err := svc.CreateFromAnnotation(ctx, goneID, EntryFields{Term: "pas", Translation: "dog"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := svc.Create(ctx, EntryFields{Term: "mačka", Translation: "cat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A highlight deleted after the word was read: the row still has the id
+	// in this fake, but the join no longer finds it.
+	delete(fs.sources, goneID)
+
+	page, err := svc.List(ctx, ListEntriesInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]*EntrySource{}
+	for _, e := range page.Entries {
+		got[e.ID] = e.Source
+	}
+	if got[cited.ID] == nil || got[cited.ID].DocumentTitle != "Čitanka" || got[cited.ID].PageNumber != 3 {
+		t.Errorf("cited source = %+v", got[cited.ID])
+	}
+	if got[orphan.ID] != nil || got[typed.ID] != nil {
+		t.Errorf("orphan, typed sources = %+v, %+v; want nil", got[orphan.ID], got[typed.ID])
+	}
+
+	updated, err := svc.Update(ctx, cited.ID, EntryFields{Term: "kuća", Translation: "home"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Source == nil || updated.Source.AnnotationID != highlightID {
+		t.Errorf("source after update = %+v, want kept", updated.Source)
+	}
+}
+
+func TestListWithoutSourcesSkipsTheLookup(t *testing.T) {
+	fs := newFakeStore()
+	svc := NewVocabularyService(fs)
+	if _, err := svc.Create(actorCtx(anaID), kuca); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.List(actorCtx(anaID), ListEntriesInput{}); err != nil {
+		t.Fatal(err)
+	}
+	if fs.sourceLookups != 0 {
+		t.Errorf("sources looked up %d times, want 0", fs.sourceLookups)
 	}
 }
 

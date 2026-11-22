@@ -88,6 +88,67 @@ export interface paths {
         };
         /** Return the logged-in user. */
         get: operations["getMe"];
+        /**
+         * Change the logged-in user's display name.
+         * @description The name is trimmed and follows the sign-up rules: 1 to 80
+         *     characters, no line breaks or control characters. Email and role
+         *     cannot be changed.
+         */
+        put: operations["updateMe"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the logged-in user's profile picture.
+         * @description A JPEG of at most 256×256 pixels. Request it by the user's
+         *     `avatarUrl`, which carries the picture's version: the response may
+         *     be kept by the browser for good, since a new picture has a new URL.
+         */
+        get: operations["getAvatar"];
+        /**
+         * Set the logged-in user's profile picture.
+         * @description Accepts a JPEG, PNG, GIF or WebP of at most 10 MB and 50 megapixels.
+         *     The picture stored is its largest centred square, turned upright as
+         *     a phone photo's EXIF orientation says, scaled to at most 256×256 and
+         *     re-encoded as a JPEG, which drops the file's other metadata. It
+         *     replaces any earlier picture.
+         */
+        put: operations["uploadAvatar"];
+        post?: never;
+        /**
+         * Remove the logged-in user's profile picture.
+         * @description Succeeds also when there is no picture.
+         */
+        delete: operations["deleteAvatar"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the student's dashboard.
+         * @description Days are counted in the given time zone, so a day starts at the
+         *     student's own midnight.
+         */
+        get: operations["getDashboard"];
         put?: never;
         post?: never;
         delete?: never;
@@ -110,7 +171,7 @@ export interface paths {
          */
         get: operations["listVocabulary"];
         put?: never;
-        /** Add a word. */
+        /** Add a word, typed in or saved from a highlight. */
         post: operations["createVocabularyEntry"];
         delete?: never;
         options?: never;
@@ -142,6 +203,305 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vocabulary/{id}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer one of a word's flashcards.
+         * @description Records how well the word was remembered, one way round, and
+         *     schedules that card's next review. The card may be new or already
+         *     due; answering a card early is allowed.
+         */
+        post: operations["createReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/review-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the cards to review today.
+         * @description Cards due today come first, longest overdue first; then the first
+         *     English-side cards of words learned the other way, those learned
+         *     first first, at most 20 a day; then new words, oldest first, at most
+         *     20 a day. A word has at most one card in the queue, and a card waits
+         *     for tomorrow while the word's other card was reviewed today. Returns
+         *     at most 50 cards; once they are answered, ask again for the rest. A
+         *     card answered "again" is due again today, so it comes back in a
+         *     later request.
+         */
+        get: operations["getReviewQueue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lessons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the user's lessons, newest first. */
+        get: operations["listLessons"];
+        put?: never;
+        /** Create a lesson. */
+        post: operations["createLesson"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lessons/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /** Get a lesson with its PDFs in upload order. */
+        get: operations["getLesson"];
+        /** Replace a lesson's title and description. */
+        put: operations["updateLesson"];
+        post?: never;
+        /** Delete a lesson and every PDF in it. */
+        delete: operations["deleteLesson"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lessons/{id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a PDF into a lesson.
+         * @description The file must start with `%PDF-` and be at most 20 MB; the browser's
+         *     claimed content type is ignored. The title is the file name without
+         *     its `.pdf` extension.
+         */
+        post: operations["uploadDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /** Get a document's details and its lesson. */
+        get: operations["getDocument"];
+        put?: never;
+        post?: never;
+        /** Delete a document. */
+        delete: operations["deleteDocument"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Download the PDF bytes.
+         * @description Sent as an attachment with a sandboxing Content-Security-Policy, so
+         *     opening the URL directly downloads the file rather than rendering it
+         *     on the app's origin. Supports Range requests.
+         */
+        get: operations["downloadDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{id}/annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a document's annotations in reading order.
+         * @description By page number, then oldest first.
+         */
+        get: operations["listAnnotations"];
+        put?: never;
+        /** Highlight text on a page, with an optional note. */
+        post: operations["createAnnotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/annotations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace an annotation's note.
+         * @description The note is the only thing that changes; an empty note leaves a plain
+         *     highlight. The highlighted text and its place stay as they are.
+         */
+        put: operations["updateAnnotationNote"];
+        post?: never;
+        /**
+         * Delete an annotation.
+         * @description Words saved from it stay in the vocabulary and lose only their source.
+         */
+        delete: operations["deleteAnnotation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{id}/strokes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a document's strokes.
+         * @description By page number, then in the order they were drawn.
+         */
+        get: operations["listStrokes"];
+        put?: never;
+        /** Draw a stroke on a page. */
+        post: operations["createStroke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/strokes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Erase a stroke.
+         * @description A stroke never changes otherwise; it is drawn or erased.
+         */
+        delete: operations["deleteStroke"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{id}/text-boxes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the text typed onto a document.
+         * @description By page number, then in the order it was added.
+         */
+        get: operations["listTextBoxes"];
+        put?: never;
+        /** Type text onto a page. */
+        post: operations["createTextBox"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/text-boxes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace a text box's text, colour and place on its page.
+         * @description The page it is on does not change.
+         */
+        put: operations["updateTextBox"];
+        post?: never;
+        /** Delete a text box. */
+        delete: operations["deleteTextBox"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -161,8 +521,17 @@ export interface components {
             email: string;
             displayName: string;
             role: components["schemas"]["Role"];
+            /**
+             * @description Where the profile picture is, with its version in the query, or
+             *     null without one.
+             * @example /api/me/avatar?v=1792747800123
+             */
+            avatarUrl: string | null;
             /** Format: date-time */
             createdAt: string;
+        };
+        ProfileInput: {
+            displayName: string;
         };
         UserEnvelope: {
             user: components["schemas"]["User"];
@@ -199,12 +568,25 @@ export interface components {
          * @enum {string}
          */
         VocabularySort: "newest" | "az";
+        /** @description The body of PUT /api/vocabulary/{id}, which replaces every field. */
+        VocabularyEntryInput: components["schemas"]["VocabularyEntryFields"];
+        /**
+         * @description The body of POST /api/vocabulary. A word saved from a PDF also names
+         *     the highlight it was selected from; the source is set only here.
+         */
+        NewVocabularyEntryInput: {
+            /**
+             * Format: uuid
+             * @description One of the user's own annotations. Leave out for a typed word.
+             */
+            sourceAnnotationId?: string;
+        } & components["schemas"]["VocabularyEntryFields"];
         /**
          * @description The fields a user types in. Grammar fields are only allowed for their
          *     part of speech: gender and plural for nouns, aspect and aspect pair
          *     for verbs, feminine and neuter forms for adjectives. Text is trimmed.
          */
-        VocabularyEntryInput: {
+        VocabularyEntryFields: {
             /** @example kuća */
             term: string;
             /** @example house */
@@ -235,6 +617,8 @@ export interface components {
             aspectPair: string;
             feminineForm: string;
             neuterForm: string;
+            /** @description Where the word was saved from; null for a typed word. */
+            source: components["schemas"]["EntrySource"] | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -251,6 +635,339 @@ export interface components {
             unfilteredTotal: number;
             page: number;
             pageSize: number;
+        };
+        /**
+         * @description Which way round a card goes: `sr_en` shows the Serbian word and asks
+         *     for its meaning; `en_sr` shows the meaning and asks for the Serbian
+         *     word, typed.
+         * @enum {string}
+         */
+        ReviewDirection: "sr_en" | "en_sr";
+        /**
+         * @description How well the word was remembered; `again` means forgotten.
+         * @enum {string}
+         */
+        ReviewRating: "again" | "hard" | "good" | "easy";
+        ReviewInput: {
+            direction: components["schemas"]["ReviewDirection"];
+            rating: components["schemas"]["ReviewRating"];
+            /**
+             * @description An IANA time zone name, for counting days. Defaults to UTC.
+             * @example Europe/Belgrade
+             */
+            timeZone?: string;
+        };
+        Review: {
+            /** Format: uuid */
+            entryId: string;
+            direction: components["schemas"]["ReviewDirection"];
+            rating: components["schemas"]["ReviewRating"];
+            /**
+             * Format: date
+             * @description When the card comes back; today after `again`.
+             */
+            dueOn: string;
+            intervalDays: number;
+        };
+        ReviewEnvelope: {
+            review: components["schemas"]["Review"];
+        };
+        /**
+         * @description In how many days the card would come back after each answer; 0 is
+         *     today.
+         */
+        NextIntervals: {
+            again: number;
+            hard: number;
+            good: number;
+            easy: number;
+        };
+        ReviewCard: {
+            entry: components["schemas"]["VocabularyEntry"];
+            direction: components["schemas"]["ReviewDirection"];
+            /** @description The word has never been reviewed this way round. */
+            new: boolean;
+            nextIntervals: components["schemas"]["NextIntervals"];
+        };
+        ReviewQueue: {
+            /**
+             * Format: date
+             * @description Today's date in the requested time zone.
+             */
+            today: string;
+            /** @description The cards to review, in order, at most one per word. */
+            cards: components["schemas"]["ReviewCard"][];
+            /** @description Words due today in all, those in `cards` included. */
+            due: number;
+            /**
+             * @description New cards left to start today, those in `cards` included: new
+             *     words and the first English-side cards of known ones.
+             */
+            new: number;
+            /**
+             * Format: date
+             * @description The first day after today with cards to review, or null when the
+             *     student has no words.
+             */
+            nextDueOn: string | null;
+        };
+        ReviewCounts: {
+            /** @description Words due today. */
+            due: number;
+            /** @description New cards left to start today, of both kinds. */
+            new: number;
+        };
+        LessonInput: {
+            /** @example Lekcija 3 – Padeži */
+            title: string;
+            description?: string;
+        };
+        Lesson: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            description: string;
+            /** @description How many PDFs the lesson holds. */
+            documentCount: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        LessonEnvelope: {
+            lesson: components["schemas"]["Lesson"];
+        };
+        LessonList: {
+            lessons: components["schemas"]["Lesson"][];
+        };
+        LessonDetail: {
+            lesson: components["schemas"]["Lesson"];
+            documents: components["schemas"]["Document"][];
+        };
+        Document: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            lessonId: string;
+            /** @description The uploaded file's name without `.pdf`. */
+            title: string;
+            /** Format: int64 */
+            byteSize: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        DocumentEnvelope: {
+            document: components["schemas"]["Document"];
+        };
+        DocumentDetail: {
+            document: components["schemas"]["Document"];
+            lesson: {
+                /** Format: uuid */
+                id: string;
+                title: string;
+            };
+        };
+        Dashboard: {
+            /**
+             * Format: date
+             * @description Today's date in the requested time zone.
+             */
+            today: string;
+            totals: components["schemas"]["DashboardTotals"];
+            review: components["schemas"]["ReviewCounts"];
+            /**
+             * @description Days in a row with any activity, flashcards included, up to
+             *     today. A streak that reached yesterday still counts while nothing
+             *     is done yet today.
+             */
+            streak: number;
+            /**
+             * @description One entry per day for the last 84 days (twelve weeks), oldest
+             *     first and today last, including days with nothing done.
+             */
+            activity: components["schemas"]["ActivityDay"][];
+            /** @description The 5 newest words, newest first. */
+            recentWords: components["schemas"]["RecentWord"][];
+            /**
+             * @description The 3 PDFs most recently worked on (uploaded, highlighted, drawn
+             *     or written on), with the page of the last change.
+             */
+            recentDocuments: components["schemas"]["RecentDocument"][];
+        };
+        DashboardTotals: {
+            words: number;
+            /** @description Words added in the last 7 days, today included. */
+            wordsThisWeek: number;
+            lessons: number;
+            documents: number;
+            highlights: number;
+            /** @description Highlights that have a note. */
+            notes: number;
+        };
+        ActivityDay: {
+            /** Format: date */
+            date: string;
+            /** @description Words added. */
+            words: number;
+            /** @description Highlights made. */
+            highlights: number;
+            /** @description PDF pages drawn or written on, each counted once. */
+            pages: number;
+            /** @description Flashcard answers. */
+            reviews: number;
+        };
+        RecentWord: {
+            /** Format: uuid */
+            id: string;
+            term: string;
+            translation: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        RecentDocument: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            lesson: {
+                /** Format: uuid */
+                id: string;
+                title: string;
+            };
+            /** @description The page of the last change; 1 for a PDF only uploaded. */
+            pageNumber: number;
+            /** Format: date-time */
+            workedAt: string;
+        };
+        EntrySource: {
+            /** Format: uuid */
+            annotationId: string;
+            /** Format: uuid */
+            documentId: string;
+            documentTitle: string;
+            pageNumber: number;
+        };
+        /**
+         * @description One rectangle of a highlight in 0–1 page coordinates: x and y from the
+         *     page's top-left corner, all values fractions of the page's width and
+         *     height. It must lie within the page.
+         */
+        Rect: {
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+        };
+        AnnotationInput: {
+            pageNumber: number;
+            /** @description One rectangle per line of the selection. */
+            rects: components["schemas"]["Rect"][];
+            /**
+             * @description The selected text. Trimmed.
+             * @example Dobar dan
+             */
+            quote: string;
+            note?: string;
+        };
+        AnnotationNoteInput: {
+            note: string;
+        };
+        Annotation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            documentId: string;
+            pageNumber: number;
+            rects: components["schemas"]["Rect"][];
+            quote: string;
+            /** @description Empty for a plain highlight. */
+            note: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        AnnotationEnvelope: {
+            annotation: components["schemas"]["Annotation"];
+        };
+        AnnotationList: {
+            annotations: components["schemas"]["Annotation"][];
+        };
+        /** @enum {string} */
+        InkColor: "black" | "blue" | "red";
+        /** @description One point of a stroke in 0–1 page coordinates, from the page's top-left corner. */
+        Point: {
+            x: number;
+            y: number;
+        };
+        StrokeInput: {
+            pageNumber: number;
+            color: components["schemas"]["InkColor"];
+            /** @description The points of one movement of the pen, in order. A single point is a dot. */
+            points: components["schemas"]["Point"][];
+        };
+        Stroke: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            documentId: string;
+            pageNumber: number;
+            color: components["schemas"]["InkColor"];
+            points: components["schemas"]["Point"][];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        StrokeEnvelope: {
+            stroke: components["schemas"]["Stroke"];
+        };
+        StrokeList: {
+            strokes: components["schemas"]["Stroke"][];
+        };
+        /**
+         * @description What can change about a text box. (x, y) is its top-left corner in
+         *     0–1 page coordinates; the text wraps at the page's right edge.
+         */
+        TextBoxFields: {
+            x: number;
+            y: number;
+            /**
+             * @description May span several lines. Trimmed.
+             * @example kuća
+             */
+            text: string;
+            color: components["schemas"]["InkColor"];
+            /**
+             * @description The text's size in CSS pixels at 100% zoom; it grows with the zoom.
+             * @example 14
+             */
+            fontSize: number;
+        };
+        /** @description The body of PUT /api/text-boxes/{id}, which replaces every field. */
+        TextBoxInput: components["schemas"]["TextBoxFields"];
+        /** @description The body of POST /api/documents/{id}/text-boxes. */
+        NewTextBoxInput: {
+            pageNumber: number;
+        } & components["schemas"]["TextBoxFields"];
+        TextBox: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            documentId: string;
+            pageNumber: number;
+            x: number;
+            y: number;
+            text: string;
+            color: components["schemas"]["InkColor"];
+            fontSize: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        TextBoxEnvelope: {
+            textBox: components["schemas"]["TextBox"];
+        };
+        TextBoxList: {
+            textBoxes: components["schemas"]["TextBox"][];
         };
         /** @description Envelope returned by every non-2xx response except /api/health. */
         Error: {
@@ -313,6 +1030,90 @@ export interface components {
             };
         };
         /**
+         * @description The caller is logged in but is not a student (code `students_only`).
+         *     Lessons, documents and vocabulary are a student's own material.
+         */
+        StudentsOnly: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description The caller is not a student (code `students_only`), or the request
+         *     came from a foreign Origin (code `forbidden_origin`).
+         */
+        StudentsOnlyOrForbiddenOrigin: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description No such annotation among the user's own (code `annotation_not_found`).
+         *     Another user's annotation and a malformed id get the same answer.
+         */
+        AnnotationNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description No such stroke among the user's own (code `stroke_not_found`).
+         *     Another user's stroke and a malformed id get the same answer.
+         */
+        StrokeNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description No such text box among the user's own (code `text_box_not_found`).
+         *     Another user's text box and a malformed id get the same answer.
+         */
+        TextBoxNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description No such lesson among the user's own (code `lesson_not_found`).
+         *     Another user's lesson and a malformed id get the same answer.
+         */
+        LessonNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description No such document among the user's own (code `document_not_found`).
+         *     Another user's document and a malformed id get the same answer.
+         */
+        DocumentNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
          * @description The user already has this word with this translation (code
          *     `duplicate_entry`). The word is compared ignoring case.
          */
@@ -324,8 +1125,23 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /**
+         * @description The card was answered elsewhere, such as in another tab, after this
+         *     answer's card was loaded (code `review_conflict`). Nothing was saved;
+         *     load the queue again.
+         */
+        ReviewConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
     };
-    parameters: never;
+    parameters: {
+        Id: string;
+    };
     requestBodies: never;
     headers: {
         /** @description Sets the `sveska_session` cookie. */
@@ -491,6 +1307,163 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
         };
     };
+    updateMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileInput"];
+            };
+        };
+        responses: {
+            /** @description The user with the new name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    getAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The picture. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description The user has no picture (code `avatar_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    uploadAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description The picture. Other form fields are ignored.
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The user with the new picture's `avatarUrl`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+            /**
+             * @description Not multipart (`unsupported_content_type`), unreadable
+             *     (`invalid_multipart`), or `validation_failed` with a `file`
+             *     problem: missing, not a picture in a supported format, over
+             *     10 MB or over 50 megapixels.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The picture is gone. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["ForbiddenOrigin"];
+        };
+    };
+    getDashboard: {
+        parameters: {
+            query?: {
+                /** @description An IANA time zone name. Defaults to UTC. */
+                timeZone?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dashboard. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dashboard"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
+            /** @description `validation_failed` with a `timeZone` problem: not a known time zone. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listVocabulary: {
         parameters: {
             query?: {
@@ -523,6 +1496,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
             422: components["responses"]["Invalid"];
         };
     };
@@ -535,7 +1509,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["VocabularyEntryInput"];
+                "application/json": components["schemas"]["NewVocabularyEntryInput"];
             };
         };
         responses: {
@@ -549,7 +1523,8 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["ForbiddenOrigin"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["AnnotationNotFound"];
             409: components["responses"]["DuplicateEntry"];
             422: components["responses"]["Invalid"];
         };
@@ -579,7 +1554,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["ForbiddenOrigin"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
             404: components["responses"]["EntryNotFound"];
             409: components["responses"]["DuplicateEntry"];
             422: components["responses"]["Invalid"];
@@ -604,8 +1579,638 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["ForbiddenOrigin"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
             404: components["responses"]["EntryNotFound"];
+        };
+    };
+    createReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewInput"];
+            };
+        };
+        responses: {
+            /** @description The answer was recorded. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["EntryNotFound"];
+            409: components["responses"]["ReviewConflict"];
+            /**
+             * @description `validation_failed` with a `direction` problem (missing or not
+             *     one of the two), a `rating` problem (not one of the four
+             *     ratings) or a `timeZone` problem (not a known time zone).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getReviewQueue: {
+        parameters: {
+            query?: {
+                /** @description An IANA time zone name. Defaults to UTC. */
+                timeZone?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The queue. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewQueue"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
+            /** @description `validation_failed` with a `timeZone` problem: not a known time zone. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listLessons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every lesson of the user. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
+        };
+    };
+    createLesson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LessonInput"];
+            };
+        };
+        responses: {
+            /** @description The new lesson. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    getLesson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lesson and its documents. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonDetail"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
+            404: components["responses"]["LessonNotFound"];
+        };
+    };
+    updateLesson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LessonInput"];
+            };
+        };
+        responses: {
+            /** @description The updated lesson. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["LessonNotFound"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    deleteLesson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lesson and its documents were deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["LessonNotFound"];
+        };
+    };
+    uploadDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description The PDF. Other form fields are ignored.
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The stored document. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["LessonNotFound"];
+            /**
+             * @description Not multipart (`unsupported_content_type`), unreadable
+             *     (`invalid_multipart`), or `validation_failed` with a `file`
+             *     problem: missing, not a PDF, or over 20 MB.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
+            404: components["responses"]["DocumentNotFound"];
+        };
+    };
+    deleteDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The document was deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["DocumentNotFound"];
+        };
+    };
+    downloadDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The PDF. */
+            200: {
+                headers: {
+                    /** @description `attachment` with the document title as the file name. */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description The requested byte range of the PDF. */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
+            404: components["responses"]["DocumentNotFound"];
+        };
+    };
+    listAnnotations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every annotation on the document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
+            404: components["responses"]["DocumentNotFound"];
+        };
+    };
+    createAnnotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnotationInput"];
+            };
+        };
+        responses: {
+            /** @description The new annotation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["DocumentNotFound"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    updateAnnotationNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnotationNoteInput"];
+            };
+        };
+        responses: {
+            /** @description The updated annotation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["AnnotationNotFound"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    deleteAnnotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The annotation was deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["AnnotationNotFound"];
+        };
+    };
+    listStrokes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every stroke on the document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrokeList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
+            404: components["responses"]["DocumentNotFound"];
+        };
+    };
+    createStroke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StrokeInput"];
+            };
+        };
+        responses: {
+            /** @description The new stroke. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrokeEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["DocumentNotFound"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    deleteStroke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stroke was erased. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["StrokeNotFound"];
+        };
+    };
+    listTextBoxes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every text box on the document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextBoxList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnly"];
+            404: components["responses"]["DocumentNotFound"];
+        };
+    };
+    createTextBox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewTextBoxInput"];
+            };
+        };
+        responses: {
+            /** @description The new text box. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextBoxEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["DocumentNotFound"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    updateTextBox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TextBoxInput"];
+            };
+        };
+        responses: {
+            /** @description The updated text box. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextBoxEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["TextBoxNotFound"];
+            422: components["responses"]["Invalid"];
+        };
+    };
+    deleteTextBox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The text box was deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["StudentsOnlyOrForbiddenOrigin"];
+            404: components["responses"]["TextBoxNotFound"];
         };
     };
 }

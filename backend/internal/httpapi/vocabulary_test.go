@@ -27,18 +27,28 @@ var testEntry = learning.VocabularyEntry{
 // fakeVocabulary records what the handlers pass in and returns testEntry,
 // or err when set.
 type fakeVocabulary struct {
-	err        error
-	calls      int
-	lastFields learning.EntryFields
-	lastList   learning.ListEntriesInput
-	lastID     string
-	page       learning.EntryPage
+	err          error
+	calls        int
+	lastFields   learning.EntryFields
+	lastList     learning.ListEntriesInput
+	lastID       string
+	lastSourceID string
+	page         learning.EntryPage
 }
 
 func (f *fakeVocabulary) Create(_ context.Context, in learning.EntryFields) (learning.VocabularyEntry, error) {
 	f.calls++
 	f.lastFields = in
 	return testEntry, f.err
+}
+
+// CreateFromAnnotation answers with testEntry citing page 3 of Čitanka.
+func (f *fakeVocabulary) CreateFromAnnotation(_ context.Context, annotationID string, in learning.EntryFields) (learning.VocabularyEntry, error) {
+	f.calls++
+	f.lastSourceID, f.lastFields = annotationID, in
+	entry := testEntry
+	entry.Source = &learning.EntrySource{AnnotationID: annotationID, DocumentID: documentID, DocumentTitle: "Čitanka", PageNumber: 3}
+	return entry, f.err
 }
 
 func (f *fakeVocabulary) List(_ context.Context, in learning.ListEntriesInput) (learning.EntryPage, error) {
@@ -88,6 +98,56 @@ func TestVocabularyRequiresSession(t *testing.T) {
 				t.Errorf("service called %d times, want 0", v.calls)
 			}
 		})
+	}
+}
+
+func TestCreateVocabularyEntryFromAHighlight(t *testing.T) {
+	v := &fakeVocabulary{}
+	body := `{"term":"kuća","translation":"house","sourceAnnotationId":"` + annotationID + `"}`
+	rec := do(t, newVocabularyRouter(v), http.MethodPost, "/api/vocabulary", loggedIn(body))
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+	}
+	if v.lastSourceID != annotationID || v.lastFields.Term != "kuća" {
+		t.Errorf("service received %q, %+v", v.lastSourceID, v.lastFields)
+	}
+	var resp struct {
+		Entry struct {
+			Source map[string]any `json:"source"`
+		} `json:"entry"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"annotationId": annotationID, "documentId": documentID, "documentTitle": "Čitanka", "pageNumber": 3.0}
+	for key, value := range want {
+		if resp.Entry.Source[key] != value {
+			t.Errorf("source[%q] = %v, want %v", key, resp.Entry.Source[key], value)
+		}
+	}
+}
+
+func TestATypedWordHasANullSource(t *testing.T) {
+	rec := do(t, newVocabularyRouter(&fakeVocabulary{}), http.MethodPost, "/api/vocabulary", loggedIn(kucaBody))
+	var resp map[string]map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if source, ok := resp["entry"]["source"]; !ok || source != nil {
+		t.Errorf("source = %v (present %v), want null", source, ok)
+	}
+}
+
+func TestUpdateCannotChangeTheSource(t *testing.T) {
+	v := &fakeVocabulary{}
+	body := `{"term":"kuća","translation":"house","sourceAnnotationId":"` + annotationID + `"}`
+	rec := do(t, newVocabularyRouter(v), http.MethodPut, "/api/vocabulary/"+entryID, loggedIn(body))
+	if rec.Code != http.StatusUnprocessableEntity || decodeError(t, rec).Code != "invalid_json" {
+		t.Errorf("status = %d, want 422 invalid_json", rec.Code)
+	}
+	if v.calls != 0 {
+		t.Errorf("service called %d times, want 0", v.calls)
 	}
 }
 

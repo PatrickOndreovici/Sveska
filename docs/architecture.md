@@ -54,7 +54,7 @@ cookies stay first-party and CORS is unnecessary.
 │   │   ├── testdb/             # integration-test database helper (built)
 │   │   ├── learning/           # lessons, documents, annotations, vocabulary, quizzes, progress
 │   │   ├── teaching/           # links, classes, assignments, submissions, grading, feedback
-│   │   └── filestore/          # PDF storage interface + local implementation (phase 2)
+│   │   └── filestore/          # PDF storage on local disk (built in phase 2)
 │   ├── go.mod
 │   └── sqlc.yaml
 ├── frontend/
@@ -124,9 +124,18 @@ Rules:
 - **Middleware.** `loadSession` turns a valid cookie into an `access.Actor` in
   the request context and clears stale cookies. `requireActor` guards every
   protected route with 401. Handlers and services read the actor through
-  `access.RequireActor`.
+  `access.RequireActor`, or `access.RequireStudent` for a student's own
+  material (lessons, documents, vocabulary), which answers a teacher with 403
+  `students_only`. The frontend's `RequireRole` route guard mirrors it.
 - **Headers.** Every API response sets `nosniff`, `DENY` framing, a
   `default-src 'none'` CSP, `no-referrer` and `no-store`.
+- **Profile.** `PUT /api/me` changes the display name; email and role are
+  fixed. A profile picture is uploaded to `/api/me/avatar` and turned into
+  the largest centred square, upright as the photo's EXIF orientation says,
+  at most 256×256, re-encoded as JPEG (which drops other metadata, such as
+  the place a photo was taken). The user's `avatarUrl` carries the picture's
+  version, so the browser may keep it for good. These endpoints act on the
+  logged-in user only (`identity.ProfileService`).
 - **Not yet built.** Rate limiting on log-in and sign-up, password reset,
   email verification and "log out everywhere" (phase 7 or when needed).
 
@@ -189,15 +198,95 @@ Rules:
 - Primitives live in `components/ui` and are added when a second caller needs
   them, not in advance.
 
-## PDFs and annotations (phase 2–3 proposal)
+## PDFs and annotations (built in phases 2 and 3)
 
-- Upload goes through the API, which validates type and size, stores bytes via
-  `filestore`, and records metadata (size, SHA-256, page count) in PostgreSQL.
+- Upload goes through the API, which checks that the file starts with `%PDF-`,
+  stops reading past 20 MB, stores bytes via `filestore`, and records metadata
+  (size, SHA-256) in PostgreSQL. The file is written first and deleted again
+  if the row cannot be inserted.
+- A photo or screenshot of a page (JPEG, PNG, WebP, or HEIC where the
+  browser decodes it) is turned into a one-page PDF in the browser before
+  upload (`lib/pdf/raster.ts`), so the API, the viewer and the drawing tools
+  only ever deal with PDFs. The image is redrawn on a white canvas, which
+  applies a photo's EXIF rotation, and shrunk to at most 3000 px a side.
+- Exporting saves the worksheet with the student's writing, to hand in: a
+  PDF of this page, the pages written on or all pages, or a PNG or JPEG of
+  this page. It is done in the browser: PDF.js draws each page on a canvas,
+  `lib/pdf/paintInk.ts` paints the strokes and text over it as DrawingLayer
+  shows them, and `lib/pdf/jpegPdf.ts`, a small PDF writer, puts the pages
+  in a PDF as JPEGs. Exported pages are pictures, so their text is no longer
+  selectable; highlights and notes are left out.
 - Downloads are served by the API after an authorization check. No public URLs.
-- PDF.js (`pdfjs-dist`) renders pages in the browser with its worker.
-- Annotations are anchored by page number plus rectangles in normalized page
+- PDF.js (`pdfjs-dist`) renders pages in the browser with its worker, and lays
+  the page's text over the canvas as invisible, selectable spans (its text
+  layer; the CSS for it is copied into `lib/pdf/textLayer.css`).
+- Annotations are highlights on selected text, each with an optional note.
+- Students also write and draw on pages, as on a worksheet: strokes drawn
+  with a pen (`ink_strokes`) and text typed where they click (`text_boxes`),
+  in three colours. Both use the same 0–1 page coordinates as highlights.
+  The drawing is laid over the PDF's text, and lets pointers through to it
+  while the select tool is in use.
+- Drawing changes show at once and are saved in the background, one request
+  after another (`useDrawings`). Each change can be undone, which sends the
+  opposite request; a failed save reloads what the API has.
+- An annotation is anchored by page number plus rectangles in normalized page
   coordinates (0–1), with the selected text stored as a quote. This survives
   zoom changes and lets vocabulary entries cite their source.
+  `lib/pdf/selection.ts` turns a browser selection into those rectangles,
+  merging the pieces of each line.
+- Saving a selected word creates its highlight first, then the vocabulary
+  entry citing it (`sourceAnnotationId`). Deleting the highlight keeps the
+  word and clears only the link.
+
+## Dashboard
+
+- A student's home page is their dashboard: totals, a streak, a calendar of
+  the last twelve weeks and where they left off. `GET /api/dashboard` builds
+  it from the study tables (`learning.DashboardService`) in the time zone the
+  browser sends, so days start at the student's midnight.
+- A day counts as active when the student added a word, highlighted text,
+  wrote on a page or answered a flashcard. The streak counts active days in a row up to today, or up
+  to yesterday while nothing is done yet today.
+- The calendar is a picture only; the summary line and a table carry the
+  same numbers. Its colours are one blue ramp, checked as an ordered ramp
+  against the card in both themes (`--color-activity-*`).
+
+## Flashcards
+
+- Every word in a student's vocabulary is a flashcard, Serbian side first
+  (`sr_en`). Once that card has been remembered twice in a row, the word
+  gets a second card, English side first (`en_sr`), answered by typing the
+  Serbian word; each card has its own schedule. `GET /api/review-queue`
+  returns today's cards: cards due, longest overdue first, then up to 20
+  new English-first cards a day, then up to 20 new words a day, oldest
+  first, at most 50 at a time. `POST /api/vocabulary/{id}/reviews` records
+  an answer to one of a word's cards (again, hard, good, easy) and
+  schedules that card's next review (`learning.ReviewService`).
+- A word shows one card a day, so that one does not give away the other's
+  answer: the queue holds at most one card per word, and a card waits for
+  tomorrow while the word's other card was reviewed today. A card answered
+  "again" still comes back the same day.
+- The schedule is a simplified SM-2, as Anki uses it, in whole days: a word
+  not yet learned comes back in 1, 2 or 4 days; after that each answer
+  stretches the interval by 1.2 (hard), the word's ease (good, 2.5 to start)
+  or the ease and 1.3 (easy), up to a year. "Again" brings the word back the
+  same day and starts it over. The API sends each card's next intervals, so
+  the buttons show them without the frontend knowing the rules.
+- Days are dates in the student's time zone, as on the dashboard. The
+  schedule and the logged answer are saved in one statement, and only if the
+  schedule is still the one that was read, so an answer sent twice (from two
+  tabs) counts once; the second gets 409 `review_conflict`.
+- The review page (`/review`) shows the cards of one queue in order and asks
+  for the queue again once they are answered, which brings back the cards
+  answered "again". Space shows the answer and 1–4 answer it. On an
+  English-first card the page checks the typed word itself
+  (`features/review/answer.ts`; the word is in the queue anyway) and
+  suggests a rating, which Enter takes: good when right, hard when only a
+  č, ć, š, ž or đ is off, again when wrong. Case, punctuation and a part in
+  brackets do not count.
+- Buttons for č ć š ž đ (`components/SerbianLetters.tsx`) sit by the typed
+  answer and in the vocabulary forms, where they type into the Serbian
+  field used last. They stay out of the tab order.
 
 ## Testing
 

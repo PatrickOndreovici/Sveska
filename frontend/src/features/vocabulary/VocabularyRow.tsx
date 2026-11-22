@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type SubmitEvent } from "react";
 import { Button } from "../../components/ui/Button";
+import { TextLink } from "../../components/ui/TextLink";
 import type { VocabularyEntry } from "../../lib/api/types";
 import {
   aspectAbbreviations,
   aspectLabels,
+  formsOf,
   genderAbbreviations,
   genderLabels,
   readEntryFields,
@@ -22,7 +24,7 @@ type VocabularyRowProps = {
 };
 
 /** The dictionary-style tag after the word: gender for nouns, aspect for verbs. */
-function GrammarTag({ entry }: { entry: EntryFields }) {
+export function GrammarTag({ entry }: { entry: EntryFields }) {
   if (entry.gender) {
     return (
       <abbr title={genderLabels[entry.gender]} className="text-sm text-ink-subtle italic no-underline">
@@ -37,15 +39,6 @@ function GrammarTag({ entry }: { entry: EntryFields }) {
       </abbr>
     );
   }
-  return null;
-}
-
-/** The other forms of the word: plural, aspect pair, or adjective endings. */
-function formsOf(entry: EntryFields): string | null {
-  if (entry.plural) return `pl. ${entry.plural}`;
-  if (entry.aspectPair) return `↔ ${entry.aspectPair}`;
-  const adjectiveForms = [entry.feminineForm, entry.neuterForm].filter(Boolean);
-  if (adjectiveForms.length > 0) return [entry.term, ...adjectiveForms].join(", ");
   return null;
 }
 
@@ -137,6 +130,14 @@ export function VocabularyRow({ entry, onSave, onDelete }: VocabularyRowProps) {
           </p>
         )}
         {entry.notes && <p className="mt-1 text-sm text-ink-subtle">{entry.notes}</p>}
+        {entry.source && (
+          <p className="mt-1 text-sm text-ink-subtle">
+            From{" "}
+            <TextLink to={`/documents/${entry.source.documentId}?page=${String(entry.source.pageNumber)}`}>
+              {entry.source.documentTitle}, page {entry.source.pageNumber}
+            </TextLink>
+          </p>
+        )}
       </div>
       <div className="flex items-center gap-4 sm:justify-end">
         <time dateTime={entry.createdAt} className="text-sm text-ink-subtle">

@@ -5,7 +5,7 @@ import { cx } from "../../components/ui/cx";
 import { Eyebrow } from "../../components/ui/Eyebrow";
 import { Select } from "../../components/ui/Select";
 import { TextField } from "../../components/ui/TextField";
-import { ApiError } from "../../lib/api/client";
+import { errorMessage } from "../../lib/api/client";
 import type { VocabularyEntry, VocabularyPage as Page } from "../../lib/api/types";
 import {
   createVocabularyEntry,
@@ -33,10 +33,6 @@ const ranges: { value: Range; label: string; days: number }[] = [
   { value: "30d", label: "30 days", days: 30 },
   { value: "all", label: "All time", days: 0 },
 ];
-
-function messageOf(error: unknown, fallback: string): string {
-  return error instanceof ApiError ? error.message : fallback;
-}
 
 export function VocabularyPage() {
   const [query, setQuery] = useState("");
@@ -70,7 +66,7 @@ export function VocabularyPage() {
       },
       (error: unknown) => {
         if (controller.signal.aborted) return;
-        setLoadError(messageOf(error, "Could not load your words. Try again."));
+        setLoadError(errorMessage(error, "Could not load your words. Try again."));
       },
     );
     return () => {
@@ -100,7 +96,7 @@ export function VocabularyPage() {
     try {
       await deleteVocabularyEntry(entry.id);
     } catch (error) {
-      setDeleteError(messageOf(error, "Could not delete the word. Try again."));
+      setDeleteError(errorMessage(error, "Could not delete the word. Try again."));
     }
     reload();
   }

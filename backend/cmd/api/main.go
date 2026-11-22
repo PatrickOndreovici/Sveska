@@ -10,9 +10,13 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	// The dashboard counts days in each student's time zone; embedding the
+	// zone database means that works on hosts that do not ship one.
+	_ "time/tzdata"
 
 	"learning-serbian-platform/backend/internal/config"
 	"learning-serbian-platform/backend/internal/database"
+	"learning-serbian-platform/backend/internal/filestore"
 	"learning-serbian-platform/backend/internal/httpapi"
 	"learning-serbian-platform/backend/internal/identity"
 	"learning-serbian-platform/backend/internal/learning"
@@ -41,13 +45,24 @@ func run() error {
 	}
 	defer pool.Close()
 
+	files, err := filestore.NewLocal(cfg.FileStorageDir)
+	if err != nil {
+		return err
+	}
+
 	queries := store.New(pool)
 	server := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: httpapi.NewRouter(httpapi.Dependencies{
 			DB:           pool,
 			Auth:         identity.NewService(queries, cfg.SessionTTL),
+			Profile:      identity.NewProfileService(queries),
+			Dashboard:    learning.NewDashboardService(queries),
 			Vocabulary:   learning.NewVocabularyService(queries),
+			Reviews:      learning.NewReviewService(queries),
+			Lessons:      learning.NewLessonService(queries, files),
+			Annotations:  learning.NewAnnotationService(queries),
+			Drawings:     learning.NewDrawingService(queries),
 			AppOrigin:    cfg.AppOrigin,
 			CookieSecure: cfg.CookieSecure,
 		}),

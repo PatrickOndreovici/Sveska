@@ -5,13 +5,18 @@
 -- shows up in Go after the next `make sqlc`.
 
 -- name: CreateVocabularyEntry :one
+-- source_annotation_id is NULL for a word typed in, or the highlight it was
+-- saved from; vocabulary_entries_source_annotation_fkey fails when that
+-- highlight does not exist or belongs to someone else.
 INSERT INTO vocabulary_entries (
     owner_id, term, translation, notes, example, part_of_speech,
-    gender, plural, aspect, aspect_pair, feminine_form, neuter_form
+    gender, plural, aspect, aspect_pair, feminine_form, neuter_form,
+    source_annotation_id
 )
 VALUES (
     @owner_id, @term, @translation, @notes, @example, @part_of_speech,
-    @gender, @plural, @aspect, @aspect_pair, @feminine_form, @neuter_form
+    @gender, @plural, @aspect, @aspect_pair, @feminine_form, @neuter_form,
+    @source_annotation_id
 )
 RETURNING *;
 

@@ -39,6 +39,7 @@ var statusByKind = map[apperr.Kind]int{
 	apperr.Unauthenticated: http.StatusUnauthorized,
 	apperr.Conflict:        http.StatusConflict,
 	apperr.NotFound:        http.StatusNotFound,
+	apperr.Forbidden:       http.StatusForbidden,
 }
 
 // writeServiceError is the single place that maps service errors to HTTP.

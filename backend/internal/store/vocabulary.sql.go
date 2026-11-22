@@ -43,28 +43,31 @@ const createVocabularyEntry = `-- name: CreateVocabularyEntry :one
 
 INSERT INTO vocabulary_entries (
     owner_id, term, translation, notes, example, part_of_speech,
-    gender, plural, aspect, aspect_pair, feminine_form, neuter_form
+    gender, plural, aspect, aspect_pair, feminine_form, neuter_form,
+    source_annotation_id
 )
 VALUES (
     $1, $2, $3, $4, $5, $6,
-    $7, $8, $9, $10, $11, $12
+    $7, $8, $9, $10, $11, $12,
+    $13
 )
-RETURNING id, owner_id, term, translation, notes, created_at, updated_at, part_of_speech, example, gender, plural, aspect, aspect_pair, feminine_form, neuter_form
+RETURNING id, owner_id, term, translation, notes, created_at, updated_at, part_of_speech, example, gender, plural, aspect, aspect_pair, feminine_form, neuter_form, source_annotation_id
 `
 
 type CreateVocabularyEntryParams struct {
-	OwnerID      string
-	Term         string
-	Translation  string
-	Notes        string
-	Example      string
-	PartOfSpeech NullPartOfSpeech
-	Gender       NullGrammaticalGender
-	Plural       string
-	Aspect       NullVerbAspect
-	AspectPair   string
-	FeminineForm string
-	NeuterForm   string
+	OwnerID            string
+	Term               string
+	Translation        string
+	Notes              string
+	Example            string
+	PartOfSpeech       NullPartOfSpeech
+	Gender             NullGrammaticalGender
+	Plural             string
+	Aspect             NullVerbAspect
+	AspectPair         string
+	FeminineForm       string
+	NeuterForm         string
+	SourceAnnotationID *string
 }
 
 // Every query filters on owner_id: a user only ever reaches their own
@@ -72,6 +75,9 @@ type CreateVocabularyEntryParams struct {
 // Rows come back as "*", which sqlc expands at generate time into every
 // column, so it reuses the store.VocabularyEntry model and a new column
 // shows up in Go after the next `make sqlc`.
+// source_annotation_id is NULL for a word typed in, or the highlight it was
+// saved from; vocabulary_entries_source_annotation_fkey fails when that
+// highlight does not exist or belongs to someone else.
 func (q *Queries) CreateVocabularyEntry(ctx context.Context, arg CreateVocabularyEntryParams) (VocabularyEntry, error) {
 	row := q.db.QueryRow(ctx, createVocabularyEntry,
 		arg.OwnerID,
@@ -86,6 +92,7 @@ func (q *Queries) CreateVocabularyEntry(ctx context.Context, arg CreateVocabular
 		arg.AspectPair,
 		arg.FeminineForm,
 		arg.NeuterForm,
+		arg.SourceAnnotationID,
 	)
 	var i VocabularyEntry
 	err := row.Scan(
@@ -104,6 +111,7 @@ func (q *Queries) CreateVocabularyEntry(ctx context.Context, arg CreateVocabular
 		&i.AspectPair,
 		&i.FeminineForm,
 		&i.NeuterForm,
+		&i.SourceAnnotationID,
 	)
 	return i, err
 }
@@ -129,7 +137,7 @@ func (q *Queries) DeleteVocabularyEntry(ctx context.Context, arg DeleteVocabular
 }
 
 const getVocabularyEntry = `-- name: GetVocabularyEntry :one
-SELECT id, owner_id, term, translation, notes, created_at, updated_at, part_of_speech, example, gender, plural, aspect, aspect_pair, feminine_form, neuter_form
+SELECT id, owner_id, term, translation, notes, created_at, updated_at, part_of_speech, example, gender, plural, aspect, aspect_pair, feminine_form, neuter_form, source_annotation_id
 FROM vocabulary_entries
 WHERE id = $1
   AND owner_id = $2
@@ -159,12 +167,13 @@ func (q *Queries) GetVocabularyEntry(ctx context.Context, arg GetVocabularyEntry
 		&i.AspectPair,
 		&i.FeminineForm,
 		&i.NeuterForm,
+		&i.SourceAnnotationID,
 	)
 	return i, err
 }
 
 const listVocabularyEntries = `-- name: ListVocabularyEntries :many
-SELECT id, owner_id, term, translation, notes, created_at, updated_at, part_of_speech, example, gender, plural, aspect, aspect_pair, feminine_form, neuter_form
+SELECT id, owner_id, term, translation, notes, created_at, updated_at, part_of_speech, example, gender, plural, aspect, aspect_pair, feminine_form, neuter_form, source_annotation_id
 FROM vocabulary_entries
 WHERE owner_id = $1
   AND (
@@ -239,6 +248,7 @@ func (q *Queries) ListVocabularyEntries(ctx context.Context, arg ListVocabularyE
 			&i.AspectPair,
 			&i.FeminineForm,
 			&i.NeuterForm,
+			&i.SourceAnnotationID,
 		); err != nil {
 			return nil, err
 		}
@@ -266,7 +276,7 @@ SET term           = $1,
     updated_at     = now()
 WHERE id = $12
   AND owner_id = $13
-RETURNING id, owner_id, term, translation, notes, created_at, updated_at, part_of_speech, example, gender, plural, aspect, aspect_pair, feminine_form, neuter_form
+RETURNING id, owner_id, term, translation, notes, created_at, updated_at, part_of_speech, example, gender, plural, aspect, aspect_pair, feminine_form, neuter_form, source_annotation_id
 `
 
 type UpdateVocabularyEntryParams struct {
@@ -319,6 +329,7 @@ func (q *Queries) UpdateVocabularyEntry(ctx context.Context, arg UpdateVocabular
 		&i.AspectPair,
 		&i.FeminineForm,
 		&i.NeuterForm,
+		&i.SourceAnnotationID,
 	)
 	return i, err
 }

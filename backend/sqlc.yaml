@@ -14,9 +14,27 @@ sql:
           # Plain Go types at the boundary keep pgtype out of service code.
           - db_type: uuid
             go_type: string
+          # A nullable uuid (a word's source highlight) is a *string, nil for NULL.
+          - db_type: uuid
+            nullable: true
+            go_type:
+              type: string
+              pointer: true
           - db_type: citext
             go_type: string
           - db_type: timestamptz
             go_type:
               import: time
               type: Time
+          # A calendar date (a flashcard's due date) is a time.Time at midnight UTC.
+          - db_type: date
+            go_type:
+              import: time
+              type: Time
+          # A nullable timestamptz (when a user has no picture) is a *time.Time, nil for NULL.
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true

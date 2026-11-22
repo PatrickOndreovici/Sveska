@@ -1,5 +1,12 @@
 import { apiRequest } from "./client";
-import type { VocabularyEntry, VocabularyEntryEnvelope, VocabularyEntryInput, VocabularyPage, VocabularySort } from "./types";
+import type {
+  NewVocabularyEntryInput,
+  VocabularyEntry,
+  VocabularyEntryEnvelope,
+  VocabularyEntryInput,
+  VocabularyPage,
+  VocabularySort,
+} from "./types";
 
 export type VocabularyQuery = {
   query: string;
@@ -20,7 +27,8 @@ export async function listVocabulary(q: VocabularyQuery, signal?: AbortSignal): 
   return apiRequest<VocabularyPage>("GET", search ? `/api/vocabulary?${search}` : "/api/vocabulary", undefined, signal);
 }
 
-export async function createVocabularyEntry(input: VocabularyEntryInput): Promise<VocabularyEntry> {
+/** Adds a word; `sourceAnnotationId` names the highlight it was saved from, if any. */
+export async function createVocabularyEntry(input: NewVocabularyEntryInput): Promise<VocabularyEntry> {
   const { entry } = await apiRequest<VocabularyEntryEnvelope>("POST", "/api/vocabulary", input);
   return entry;
 }

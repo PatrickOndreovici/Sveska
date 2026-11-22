@@ -53,6 +53,49 @@ func (ns NullGrammaticalGender) Value() (driver.Value, error) {
 	return string(ns.GrammaticalGender), nil
 }
 
+type InkColor string
+
+const (
+	InkColorBlack InkColor = "black"
+	InkColorBlue  InkColor = "blue"
+	InkColorRed   InkColor = "red"
+)
+
+func (e *InkColor) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = InkColor(s)
+	case string:
+		*e = InkColor(s)
+	default:
+		return fmt.Errorf("unsupported scan type for InkColor: %T", src)
+	}
+	return nil
+}
+
+type NullInkColor struct {
+	InkColor InkColor
+	Valid    bool // Valid is true if InkColor is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullInkColor) Scan(value interface{}) error {
+	if value == nil {
+		ns.InkColor, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.InkColor.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullInkColor) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.InkColor), nil
+}
+
 type PartOfSpeech string
 
 const (
@@ -95,6 +138,92 @@ func (ns NullPartOfSpeech) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.PartOfSpeech), nil
+}
+
+type ReviewDirection string
+
+const (
+	ReviewDirectionSrEn ReviewDirection = "sr_en"
+	ReviewDirectionEnSr ReviewDirection = "en_sr"
+)
+
+func (e *ReviewDirection) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ReviewDirection(s)
+	case string:
+		*e = ReviewDirection(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ReviewDirection: %T", src)
+	}
+	return nil
+}
+
+type NullReviewDirection struct {
+	ReviewDirection ReviewDirection
+	Valid           bool // Valid is true if ReviewDirection is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullReviewDirection) Scan(value interface{}) error {
+	if value == nil {
+		ns.ReviewDirection, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ReviewDirection.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullReviewDirection) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ReviewDirection), nil
+}
+
+type ReviewRating string
+
+const (
+	ReviewRatingAgain ReviewRating = "again"
+	ReviewRatingHard  ReviewRating = "hard"
+	ReviewRatingGood  ReviewRating = "good"
+	ReviewRatingEasy  ReviewRating = "easy"
+)
+
+func (e *ReviewRating) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ReviewRating(s)
+	case string:
+		*e = ReviewRating(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ReviewRating: %T", src)
+	}
+	return nil
+}
+
+type NullReviewRating struct {
+	ReviewRating ReviewRating
+	Valid        bool // Valid is true if ReviewRating is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullReviewRating) Scan(value interface{}) error {
+	if value == nil {
+		ns.ReviewRating, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ReviewRating.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullReviewRating) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ReviewRating), nil
 }
 
 type UserRole string
@@ -182,12 +311,91 @@ func (ns NullVerbAspect) Value() (driver.Value, error) {
 	return string(ns.VerbAspect), nil
 }
 
+type Annotation struct {
+	ID         string
+	OwnerID    string
+	DocumentID string
+	PageNumber int32
+	Rects      []byte
+	Quote      string
+	Note       string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+type Document struct {
+	ID         string
+	OwnerID    string
+	LessonID   string
+	Title      string
+	StorageKey string
+	ByteSize   int64
+	Sha256     []byte
+	CreatedAt  time.Time
+}
+
+type InkStroke struct {
+	ID         string
+	OwnerID    string
+	DocumentID string
+	PageNumber int32
+	Color      InkColor
+	Points     []byte
+	CreatedAt  time.Time
+}
+
+type Lesson struct {
+	ID          string
+	OwnerID     string
+	Title       string
+	Description string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type Review struct {
+	ID           string
+	OwnerID      string
+	EntryID      *string
+	Rating       ReviewRating
+	IntervalDays int32
+	ReviewedAt   time.Time
+	Direction    ReviewDirection
+}
+
+type ReviewCard struct {
+	EntryID        string
+	OwnerID        string
+	DueOn          time.Time
+	IntervalDays   int32
+	EasePercent    int32
+	Repetitions    int32
+	Lapses         int32
+	LastReviewedAt time.Time
+	CreatedAt      time.Time
+	Direction      ReviewDirection
+}
+
 type Session struct {
 	ID        string
 	UserID    string
 	TokenHash []byte
 	CreatedAt time.Time
 	ExpiresAt time.Time
+}
+
+type TextBox struct {
+	ID         string
+	OwnerID    string
+	DocumentID string
+	PageNumber int32
+	X          float64
+	Y          float64
+	Body       string
+	Color      InkColor
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	FontSize   int32
 }
 
 type User struct {
@@ -200,20 +408,27 @@ type User struct {
 	UpdatedAt    time.Time
 }
 
+type UserAvatar struct {
+	UserID    string
+	Image     []byte
+	UpdatedAt time.Time
+}
+
 type VocabularyEntry struct {
-	ID           string
-	OwnerID      string
-	Term         string
-	Translation  string
-	Notes        string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	PartOfSpeech NullPartOfSpeech
-	Example      string
-	Gender       NullGrammaticalGender
-	Plural       string
-	Aspect       NullVerbAspect
-	AspectPair   string
-	FeminineForm string
-	NeuterForm   string
+	ID                 string
+	OwnerID            string
+	Term               string
+	Translation        string
+	Notes              string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	PartOfSpeech       NullPartOfSpeech
+	Example            string
+	Gender             NullGrammaticalGender
+	Plural             string
+	Aspect             NullVerbAspect
+	AspectPair         string
+	FeminineForm       string
+	NeuterForm         string
+	SourceAnnotationID *string
 }

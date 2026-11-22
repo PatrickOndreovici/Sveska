@@ -29,6 +29,8 @@ type User struct {
 	DisplayName string
 	Role        Role
 	CreatedAt   time.Time
+	// AvatarUpdatedAt is when the profile picture was last set, nil without one.
+	AvatarUpdatedAt *time.Time
 }
 
 // Session is a newly issued login. Token goes into the cookie and is not stored.
@@ -153,7 +155,10 @@ func (s *Service) LogIn(ctx context.Context, in LogInInput) (User, Session, erro
 		return User{}, Session{}, errInvalidCredentials
 	}
 
-	user := User{ID: row.ID, Email: row.Email, DisplayName: row.DisplayName, Role: Role(row.Role), CreatedAt: row.CreatedAt}
+	user := User{
+		ID: row.ID, Email: row.Email, DisplayName: row.DisplayName, Role: Role(row.Role), CreatedAt: row.CreatedAt,
+		AvatarUpdatedAt: row.AvatarUpdatedAt,
+	}
 	session, err := s.startSession(ctx, user.ID)
 	if err != nil {
 		return User{}, Session{}, err
@@ -184,7 +189,10 @@ func (s *Service) Authenticate(ctx context.Context, token string) (User, error) 
 	if err != nil {
 		return User{}, fmt.Errorf("get session user: %w", err)
 	}
-	return User{ID: row.ID, Email: row.Email, DisplayName: row.DisplayName, Role: Role(row.Role), CreatedAt: row.CreatedAt}, nil
+	return User{
+		ID: row.ID, Email: row.Email, DisplayName: row.DisplayName, Role: Role(row.Role), CreatedAt: row.CreatedAt,
+		AvatarUpdatedAt: row.AvatarUpdatedAt,
+	}, nil
 }
 
 func (s *Service) startSession(ctx context.Context, userID string) (Session, error) {

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Sveska API
-  version: 0.3.0
+  version: 0.10.0
   description: |
     REST API for the language-learning workspace. This file is the contract:
     endpoints are added here first, then implemented in backend/internal/httpapi
@@ -18,8 +18,45 @@ tags:
     description: Operational endpoints.
   - name: auth
     description: Accounts and sessions.
+  - name: profile
+    description: |
+      How the logged-in user appears: their display name and profile
+      picture. These endpoints act on the caller's own account only.
+  - name: dashboard
+    description: |
+      A student's overview: totals, what they did on each recent day and
+      where to pick up. Teachers get 403 `students_only`.
   - name: vocabulary
-    description: A user's own list of words. Every entry is private to its owner.
+    description: |
+      A student's own list of words. Every entry is private to its owner;
+      teachers get 403 `students_only`.
+  - name: reviews
+    description: |
+      Flashcards made from a student's words. Every word has a card shown
+      Serbian side first (`sr_en`); once that one has been remembered twice
+      in a row, the word also gets a card shown English side first
+      (`en_sr`), answered by typing the Serbian word. Each card's answers
+      schedule its next review further away the better it was remembered
+      (spaced repetition); a forgotten card comes back the same day. A word
+      shows one card a day, so that one does not give away the other's
+      answer. Days are counted in the student's time zone, as on the
+      dashboard. Teachers get 403 `students_only`.
+  - name: lessons
+    description: |
+      A student's lessons and the PDFs uploaded into them. Every lesson and
+      document is private to its owner; someone else's id answers 404, and
+      teachers get 403 `students_only`.
+  - name: annotations
+    description: |
+      Highlights on a student's own PDFs, each with an optional note. They
+      are anchored by page number and rectangles in 0–1 page coordinates, so
+      they fit the page at any zoom. Private to their owner, like documents.
+  - name: drawings
+    description: |
+      Writing and drawing on a student's own PDFs: strokes drawn by hand,
+      such as a circle around an answer, and text typed onto a page, such as
+      the answer to a fill-in exercise. Both are placed in 0–1 page
+      coordinates, like highlights, and are private to their owner.
 paths:
   /api/health:
     get:
@@ -139,6 +176,155 @@ paths:
                 $ref: "#/components/schemas/UserEnvelope"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+    put:
+      tags: [profile]
+      operationId: updateMe
+      summary: Change the logged-in user's display name.
+      description: |
+        The name is trimmed and follows the sign-up rules: 1 to 80
+        characters, no line breaks or control characters. Email and role
+        cannot be changed.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileInput"
+      responses:
+        "200":
+          description: The user with the new name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/ForbiddenOrigin"
+        "422":
+          $ref: "#/components/responses/Invalid"
+  /api/me/avatar:
+    get:
+      tags: [profile]
+      operationId: getAvatar
+      summary: Return the logged-in user's profile picture.
+      description: |
+        A JPEG of at most 256×256 pixels. Request it by the user's
+        `avatarUrl`, which carries the picture's version: the response may
+        be kept by the browser for good, since a new picture has a new URL.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The picture.
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: The user has no picture (code `avatar_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      tags: [profile]
+      operationId: uploadAvatar
+      summary: Set the logged-in user's profile picture.
+      description: |
+        Accepts a JPEG, PNG, GIF or WebP of at most 10 MB and 50 megapixels.
+        The picture stored is its largest centred square, turned upright as
+        a phone photo's EXIF orientation says, scaled to at most 256×256 and
+        re-encoded as a JPEG, which drops the file's other metadata. It
+        replaces any earlier picture.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The picture. Other form fields are ignored.
+      responses:
+        "200":
+          description: The user with the new picture's `avatarUrl`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/ForbiddenOrigin"
+        "422":
+          description: |
+            Not multipart (`unsupported_content_type`), unreadable
+            (`invalid_multipart`), or `validation_failed` with a `file`
+            problem: missing, not a picture in a supported format, over
+            10 MB or over 50 megapixels.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [profile]
+      operationId: deleteAvatar
+      summary: Remove the logged-in user's profile picture.
+      description: Succeeds also when there is no picture.
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: The picture is gone.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/ForbiddenOrigin"
+  /api/dashboard:
+    get:
+      tags: [dashboard]
+      operationId: getDashboard
+      summary: Return the student's dashboard.
+      description: |
+        Days are counted in the given time zone, so a day starts at the
+        student's own midnight.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: timeZone
+          in: query
+          description: An IANA time zone name. Defaults to UTC.
+          schema:
+            type: string
+            example: Europe/Belgrade
+      responses:
+        "200":
+          description: The dashboard.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
+        "422":
+          description: "`validation_failed` with a `timeZone` problem: not a known time zone."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/vocabulary:
     get:
       tags: [vocabulary]
@@ -189,12 +375,14 @@ paths:
                 $ref: "#/components/schemas/VocabularyPage"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
         "422":
           $ref: "#/components/responses/Invalid"
     post:
       tags: [vocabulary]
       operationId: createVocabularyEntry
-      summary: Add a word.
+      summary: Add a word, typed in or saved from a highlight.
       security:
         - sessionCookie: []
       requestBody:
@@ -202,7 +390,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/VocabularyEntryInput"
+              $ref: "#/components/schemas/NewVocabularyEntryInput"
       responses:
         "201":
           description: The word was added.
@@ -213,7 +401,9 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          $ref: "#/components/responses/ForbiddenOrigin"
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/AnnotationNotFound"
         "409":
           $ref: "#/components/responses/DuplicateEntry"
         "422":
@@ -251,7 +441,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          $ref: "#/components/responses/ForbiddenOrigin"
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
         "404":
           $ref: "#/components/responses/EntryNotFound"
         "409":
@@ -270,9 +460,591 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          $ref: "#/components/responses/ForbiddenOrigin"
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
         "404":
           $ref: "#/components/responses/EntryNotFound"
+  /api/vocabulary/{id}/reviews:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [reviews]
+      operationId: createReview
+      summary: Answer one of a word's flashcards.
+      description: |
+        Records how well the word was remembered, one way round, and
+        schedules that card's next review. The card may be new or already
+        due; answering a card early is allowed.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewInput"
+      responses:
+        "201":
+          description: The answer was recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/EntryNotFound"
+        "409":
+          $ref: "#/components/responses/ReviewConflict"
+        "422":
+          description: |
+            `validation_failed` with a `direction` problem (missing or not
+            one of the two), a `rating` problem (not one of the four
+            ratings) or a `timeZone` problem (not a known time zone).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/review-queue:
+    get:
+      tags: [reviews]
+      operationId: getReviewQueue
+      summary: Return the cards to review today.
+      description: |
+        Cards due today come first, longest overdue first; then the first
+        English-side cards of words learned the other way, those learned
+        first first, at most 20 a day; then new words, oldest first, at most
+        20 a day. A word has at most one card in the queue, and a card waits
+        for tomorrow while the word's other card was reviewed today. Returns
+        at most 50 cards; once they are answered, ask again for the rest. A
+        card answered "again" is due again today, so it comes back in a
+        later request.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: timeZone
+          in: query
+          description: An IANA time zone name. Defaults to UTC.
+          schema:
+            type: string
+            example: Europe/Belgrade
+      responses:
+        "200":
+          description: The queue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewQueue"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
+        "422":
+          description: "`validation_failed` with a `timeZone` problem: not a known time zone."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/lessons:
+    get:
+      tags: [lessons]
+      operationId: listLessons
+      summary: List the user's lessons, newest first.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Every lesson of the user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LessonList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
+    post:
+      tags: [lessons]
+      operationId: createLesson
+      summary: Create a lesson.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LessonInput"
+      responses:
+        "201":
+          description: The new lesson.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LessonEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "422":
+          $ref: "#/components/responses/Invalid"
+  /api/lessons/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [lessons]
+      operationId: getLesson
+      summary: Get a lesson with its PDFs in upload order.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The lesson and its documents.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LessonDetail"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
+        "404":
+          $ref: "#/components/responses/LessonNotFound"
+    put:
+      tags: [lessons]
+      operationId: updateLesson
+      summary: Replace a lesson's title and description.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LessonInput"
+      responses:
+        "200":
+          description: The updated lesson.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LessonEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/LessonNotFound"
+        "422":
+          $ref: "#/components/responses/Invalid"
+    delete:
+      tags: [lessons]
+      operationId: deleteLesson
+      summary: Delete a lesson and every PDF in it.
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: The lesson and its documents were deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/LessonNotFound"
+  /api/lessons/{id}/documents:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [lessons]
+      operationId: uploadDocument
+      summary: Upload a PDF into a lesson.
+      description: |
+        The file must start with `%PDF-` and be at most 20 MB; the browser's
+        claimed content type is ignored. The title is the file name without
+        its `.pdf` extension.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The PDF. Other form fields are ignored.
+      responses:
+        "201":
+          description: The stored document.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/LessonNotFound"
+        "422":
+          description: |
+            Not multipart (`unsupported_content_type`), unreadable
+            (`invalid_multipart`), or `validation_failed` with a `file`
+            problem: missing, not a PDF, or over 20 MB.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/documents/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [lessons]
+      operationId: getDocument
+      summary: Get a document's details and its lesson.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The document.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentDetail"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
+        "404":
+          $ref: "#/components/responses/DocumentNotFound"
+    delete:
+      tags: [lessons]
+      operationId: deleteDocument
+      summary: Delete a document.
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: The document was deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/DocumentNotFound"
+  /api/documents/{id}/file:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [lessons]
+      operationId: downloadDocument
+      summary: Download the PDF bytes.
+      description: |
+        Sent as an attachment with a sandboxing Content-Security-Policy, so
+        opening the URL directly downloads the file rather than rendering it
+        on the app's origin. Supports Range requests.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: The PDF.
+          headers:
+            Content-Disposition:
+              description: "`attachment` with the document title as the file name."
+              schema:
+                type: string
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: The requested byte range of the PDF.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
+        "404":
+          $ref: "#/components/responses/DocumentNotFound"
+  /api/documents/{id}/annotations:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [annotations]
+      operationId: listAnnotations
+      summary: List a document's annotations in reading order.
+      description: By page number, then oldest first.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Every annotation on the document.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnnotationList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
+        "404":
+          $ref: "#/components/responses/DocumentNotFound"
+    post:
+      tags: [annotations]
+      operationId: createAnnotation
+      summary: Highlight text on a page, with an optional note.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnotationInput"
+      responses:
+        "201":
+          description: The new annotation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnnotationEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/DocumentNotFound"
+        "422":
+          $ref: "#/components/responses/Invalid"
+  /api/annotations/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    put:
+      tags: [annotations]
+      operationId: updateAnnotationNote
+      summary: Replace an annotation's note.
+      description: |
+        The note is the only thing that changes; an empty note leaves a plain
+        highlight. The highlighted text and its place stay as they are.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnotationNoteInput"
+      responses:
+        "200":
+          description: The updated annotation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnnotationEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/AnnotationNotFound"
+        "422":
+          $ref: "#/components/responses/Invalid"
+    delete:
+      tags: [annotations]
+      operationId: deleteAnnotation
+      summary: Delete an annotation.
+      description: Words saved from it stay in the vocabulary and lose only their source.
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: The annotation was deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/AnnotationNotFound"
+  /api/documents/{id}/strokes:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [drawings]
+      operationId: listStrokes
+      summary: List a document's strokes.
+      description: By page number, then in the order they were drawn.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Every stroke on the document.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StrokeList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
+        "404":
+          $ref: "#/components/responses/DocumentNotFound"
+    post:
+      tags: [drawings]
+      operationId: createStroke
+      summary: Draw a stroke on a page.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StrokeInput"
+      responses:
+        "201":
+          description: The new stroke.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StrokeEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/DocumentNotFound"
+        "422":
+          $ref: "#/components/responses/Invalid"
+  /api/strokes/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    delete:
+      tags: [drawings]
+      operationId: deleteStroke
+      summary: Erase a stroke.
+      description: A stroke never changes otherwise; it is drawn or erased.
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: The stroke was erased.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/StrokeNotFound"
+  /api/documents/{id}/text-boxes:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [drawings]
+      operationId: listTextBoxes
+      summary: List the text typed onto a document.
+      description: By page number, then in the order it was added.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Every text box on the document.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextBoxList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnly"
+        "404":
+          $ref: "#/components/responses/DocumentNotFound"
+    post:
+      tags: [drawings]
+      operationId: createTextBox
+      summary: Type text onto a page.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewTextBoxInput"
+      responses:
+        "201":
+          description: The new text box.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextBoxEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/DocumentNotFound"
+        "422":
+          $ref: "#/components/responses/Invalid"
+  /api/text-boxes/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    put:
+      tags: [drawings]
+      operationId: updateTextBox
+      summary: Replace a text box's text, colour and place on its page.
+      description: The page it is on does not change.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TextBoxInput"
+      responses:
+        "200":
+          description: The updated text box.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextBoxEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/TextBoxNotFound"
+        "422":
+          $ref: "#/components/responses/Invalid"
+    delete:
+      tags: [drawings]
+      operationId: deleteTextBox
+      summary: Delete a text box.
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: The text box was deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/StudentsOnlyOrForbiddenOrigin"
+        "404":
+          $ref: "#/components/responses/TextBoxNotFound"
 components:
   securitySchemes:
     sessionCookie:
@@ -287,6 +1059,14 @@ components:
       description: Sets the `sveska_session` cookie.
       schema:
         type: string
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   responses:
     Unauthenticated:
       description: No valid session (code `unauthenticated`).
@@ -318,10 +1098,75 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    StudentsOnly:
+      description: |
+        The caller is logged in but is not a student (code `students_only`).
+        Lessons, documents and vocabulary are a student's own material.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    StudentsOnlyOrForbiddenOrigin:
+      description: |
+        The caller is not a student (code `students_only`), or the request
+        came from a foreign Origin (code `forbidden_origin`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    AnnotationNotFound:
+      description: |
+        No such annotation among the user's own (code `annotation_not_found`).
+        Another user's annotation and a malformed id get the same answer.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    StrokeNotFound:
+      description: |
+        No such stroke among the user's own (code `stroke_not_found`).
+        Another user's stroke and a malformed id get the same answer.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TextBoxNotFound:
+      description: |
+        No such text box among the user's own (code `text_box_not_found`).
+        Another user's text box and a malformed id get the same answer.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    LessonNotFound:
+      description: |
+        No such lesson among the user's own (code `lesson_not_found`).
+        Another user's lesson and a malformed id get the same answer.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    DocumentNotFound:
+      description: |
+        No such document among the user's own (code `document_not_found`).
+        Another user's document and a malformed id get the same answer.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     DuplicateEntry:
       description: |
         The user already has this word with this translation (code
         `duplicate_entry`). The word is compared ignoring case.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ReviewConflict:
+      description: |
+        The card was answered elsewhere, such as in another tab, after this
+        answer's card was loaded (code `review_conflict`). Nothing was saved;
+        load the queue again.
       content:
         application/json:
           schema:
@@ -344,7 +1189,7 @@ components:
     User:
       type: object
       additionalProperties: false
-      required: [id, email, displayName, role, createdAt]
+      required: [id, email, displayName, role, avatarUrl, createdAt]
       properties:
         id:
           type: string
@@ -356,9 +1201,24 @@ components:
           type: string
         role:
           $ref: "#/components/schemas/Role"
+        avatarUrl:
+          type: [string, "null"]
+          description: |
+            Where the profile picture is, with its version in the query, or
+            null without one.
+          example: /api/me/avatar?v=1792747800123
         createdAt:
           type: string
           format: date-time
+    ProfileInput:
+      type: object
+      additionalProperties: false
+      required: [displayName]
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 80
     UserEnvelope:
       type: object
       additionalProperties: false
@@ -412,12 +1272,28 @@ components:
       enum: [newest, az]
       default: newest
     VocabularyEntryInput:
+      description: The body of PUT /api/vocabulary/{id}, which replaces every field.
+      allOf:
+        - $ref: "#/components/schemas/VocabularyEntryFields"
+      unevaluatedProperties: false
+    NewVocabularyEntryInput:
+      description: |
+        The body of POST /api/vocabulary. A word saved from a PDF also names
+        the highlight it was selected from; the source is set only here.
+      allOf:
+        - $ref: "#/components/schemas/VocabularyEntryFields"
+      properties:
+        sourceAnnotationId:
+          type: string
+          format: uuid
+          description: One of the user's own annotations. Leave out for a typed word.
+      unevaluatedProperties: false
+    VocabularyEntryFields:
       description: |
         The fields a user types in. Grammar fields are only allowed for their
         part of speech: gender and plural for nouns, aspect and aspect pair
         for verbs, feminine and neuter forms for adjectives. Text is trimmed.
       type: object
-      additionalProperties: false
       required: [term, translation]
       properties:
         term:
@@ -472,6 +1348,7 @@ components:
         - aspectPair
         - feminineForm
         - neuterForm
+        - source
         - createdAt
         - updatedAt
       properties:
@@ -500,6 +1377,11 @@ components:
           type: string
         neuterForm:
           type: string
+        source:
+          description: Where the word was saved from; null for a typed word.
+          oneOf:
+            - $ref: "#/components/schemas/EntrySource"
+            - type: "null"
         createdAt:
           type: string
           format: date-time
@@ -532,6 +1414,655 @@ components:
           type: integer
         pageSize:
           type: integer
+    ReviewDirection:
+      type: string
+      enum: [sr_en, en_sr]
+      description: |
+        Which way round a card goes: `sr_en` shows the Serbian word and asks
+        for its meaning; `en_sr` shows the meaning and asks for the Serbian
+        word, typed.
+    ReviewRating:
+      type: string
+      enum: [again, hard, good, easy]
+      description: How well the word was remembered; `again` means forgotten.
+    ReviewInput:
+      type: object
+      additionalProperties: false
+      required: [direction, rating]
+      properties:
+        direction:
+          $ref: "#/components/schemas/ReviewDirection"
+        rating:
+          $ref: "#/components/schemas/ReviewRating"
+        timeZone:
+          type: string
+          description: An IANA time zone name, for counting days. Defaults to UTC.
+          example: Europe/Belgrade
+    Review:
+      type: object
+      additionalProperties: false
+      required: [entryId, direction, rating, dueOn, intervalDays]
+      properties:
+        entryId:
+          type: string
+          format: uuid
+        direction:
+          $ref: "#/components/schemas/ReviewDirection"
+        rating:
+          $ref: "#/components/schemas/ReviewRating"
+        dueOn:
+          type: string
+          format: date
+          description: When the card comes back; today after `again`.
+        intervalDays:
+          type: integer
+          minimum: 0
+          maximum: 365
+    ReviewEnvelope:
+      type: object
+      additionalProperties: false
+      required: [review]
+      properties:
+        review:
+          $ref: "#/components/schemas/Review"
+    NextIntervals:
+      type: object
+      additionalProperties: false
+      description: |
+        In how many days the card would come back after each answer; 0 is
+        today.
+      required: [again, hard, good, easy]
+      properties:
+        again:
+          type: integer
+          minimum: 0
+          maximum: 365
+        hard:
+          type: integer
+          minimum: 0
+          maximum: 365
+        good:
+          type: integer
+          minimum: 0
+          maximum: 365
+        easy:
+          type: integer
+          minimum: 0
+          maximum: 365
+    ReviewCard:
+      type: object
+      additionalProperties: false
+      required: [entry, direction, new, nextIntervals]
+      properties:
+        entry:
+          $ref: "#/components/schemas/VocabularyEntry"
+        direction:
+          $ref: "#/components/schemas/ReviewDirection"
+        new:
+          type: boolean
+          description: The word has never been reviewed this way round.
+        nextIntervals:
+          $ref: "#/components/schemas/NextIntervals"
+    ReviewQueue:
+      type: object
+      additionalProperties: false
+      required: [today, cards, due, new, nextDueOn]
+      properties:
+        today:
+          type: string
+          format: date
+          description: Today's date in the requested time zone.
+        cards:
+          type: array
+          maxItems: 50
+          description: The cards to review, in order, at most one per word.
+          items:
+            $ref: "#/components/schemas/ReviewCard"
+        due:
+          type: integer
+          minimum: 0
+          description: Words due today in all, those in `cards` included.
+        new:
+          type: integer
+          minimum: 0
+          description: |
+            New cards left to start today, those in `cards` included: new
+            words and the first English-side cards of known ones.
+        nextDueOn:
+          type: [string, "null"]
+          format: date
+          description: |
+            The first day after today with cards to review, or null when the
+            student has no words.
+    ReviewCounts:
+      type: object
+      additionalProperties: false
+      required: [due, new]
+      properties:
+        due:
+          type: integer
+          minimum: 0
+          description: Words due today.
+        new:
+          type: integer
+          minimum: 0
+          description: New cards left to start today, of both kinds.
+    LessonInput:
+      type: object
+      additionalProperties: false
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: Lekcija 3 – Padeži
+        description:
+          type: string
+          maxLength: 2000
+    Lesson:
+      type: object
+      additionalProperties: false
+      required: [id, title, description, documentCount, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        documentCount:
+          type: integer
+          description: How many PDFs the lesson holds.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    LessonEnvelope:
+      type: object
+      additionalProperties: false
+      required: [lesson]
+      properties:
+        lesson:
+          $ref: "#/components/schemas/Lesson"
+    LessonList:
+      type: object
+      additionalProperties: false
+      required: [lessons]
+      properties:
+        lessons:
+          type: array
+          items:
+            $ref: "#/components/schemas/Lesson"
+    LessonDetail:
+      type: object
+      additionalProperties: false
+      required: [lesson, documents]
+      properties:
+        lesson:
+          $ref: "#/components/schemas/Lesson"
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/Document"
+    Document:
+      type: object
+      additionalProperties: false
+      required: [id, lessonId, title, byteSize, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        lessonId:
+          type: string
+          format: uuid
+        title:
+          type: string
+          description: The uploaded file's name without `.pdf`.
+        byteSize:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+    DocumentEnvelope:
+      type: object
+      additionalProperties: false
+      required: [document]
+      properties:
+        document:
+          $ref: "#/components/schemas/Document"
+    DocumentDetail:
+      type: object
+      additionalProperties: false
+      required: [document, lesson]
+      properties:
+        document:
+          $ref: "#/components/schemas/Document"
+        lesson:
+          type: object
+          additionalProperties: false
+          required: [id, title]
+          properties:
+            id:
+              type: string
+              format: uuid
+            title:
+              type: string
+    Dashboard:
+      type: object
+      additionalProperties: false
+      required: [today, totals, review, streak, activity, recentWords, recentDocuments]
+      properties:
+        today:
+          type: string
+          format: date
+          description: Today's date in the requested time zone.
+        totals:
+          $ref: "#/components/schemas/DashboardTotals"
+        review:
+          $ref: "#/components/schemas/ReviewCounts"
+        streak:
+          type: integer
+          minimum: 0
+          description: |
+            Days in a row with any activity, flashcards included, up to
+            today. A streak that reached yesterday still counts while nothing
+            is done yet today.
+        activity:
+          type: array
+          description: |
+            One entry per day for the last 84 days (twelve weeks), oldest
+            first and today last, including days with nothing done.
+          items:
+            $ref: "#/components/schemas/ActivityDay"
+        recentWords:
+          type: array
+          description: The 5 newest words, newest first.
+          items:
+            $ref: "#/components/schemas/RecentWord"
+        recentDocuments:
+          type: array
+          description: |
+            The 3 PDFs most recently worked on (uploaded, highlighted, drawn
+            or written on), with the page of the last change.
+          items:
+            $ref: "#/components/schemas/RecentDocument"
+    DashboardTotals:
+      type: object
+      additionalProperties: false
+      required: [words, wordsThisWeek, lessons, documents, highlights, notes]
+      properties:
+        words:
+          type: integer
+          minimum: 0
+        wordsThisWeek:
+          type: integer
+          minimum: 0
+          description: Words added in the last 7 days, today included.
+        lessons:
+          type: integer
+          minimum: 0
+        documents:
+          type: integer
+          minimum: 0
+        highlights:
+          type: integer
+          minimum: 0
+        notes:
+          type: integer
+          minimum: 0
+          description: Highlights that have a note.
+    ActivityDay:
+      type: object
+      additionalProperties: false
+      required: [date, words, highlights, pages, reviews]
+      properties:
+        date:
+          type: string
+          format: date
+        words:
+          type: integer
+          minimum: 0
+          description: Words added.
+        highlights:
+          type: integer
+          minimum: 0
+          description: Highlights made.
+        pages:
+          type: integer
+          minimum: 0
+          description: PDF pages drawn or written on, each counted once.
+        reviews:
+          type: integer
+          minimum: 0
+          description: Flashcard answers.
+    RecentWord:
+      type: object
+      additionalProperties: false
+      required: [id, term, translation, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        term:
+          type: string
+        translation:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    RecentDocument:
+      type: object
+      additionalProperties: false
+      required: [id, title, lesson, pageNumber, workedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        lesson:
+          type: object
+          additionalProperties: false
+          required: [id, title]
+          properties:
+            id:
+              type: string
+              format: uuid
+            title:
+              type: string
+        pageNumber:
+          type: integer
+          minimum: 1
+          description: The page of the last change; 1 for a PDF only uploaded.
+        workedAt:
+          type: string
+          format: date-time
+    EntrySource:
+      type: object
+      additionalProperties: false
+      required: [annotationId, documentId, documentTitle, pageNumber]
+      properties:
+        annotationId:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        documentTitle:
+          type: string
+        pageNumber:
+          type: integer
+          minimum: 1
+    Rect:
+      description: |
+        One rectangle of a highlight in 0–1 page coordinates: x and y from the
+        page's top-left corner, all values fractions of the page's width and
+        height. It must lie within the page.
+      type: object
+      additionalProperties: false
+      required: [x, y, width, height]
+      properties:
+        x:
+          type: number
+          minimum: 0
+          maximum: 1
+        y:
+          type: number
+          minimum: 0
+          maximum: 1
+        width:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 1
+        height:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 1
+    AnnotationInput:
+      type: object
+      additionalProperties: false
+      required: [pageNumber, rects, quote]
+      properties:
+        pageNumber:
+          type: integer
+          minimum: 1
+          maximum: 100000
+        rects:
+          description: One rectangle per line of the selection.
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/Rect"
+        quote:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: The selected text. Trimmed.
+          example: Dobar dan
+        note:
+          type: string
+          maxLength: 5000
+    AnnotationNoteInput:
+      type: object
+      additionalProperties: false
+      required: [note]
+      properties:
+        note:
+          type: string
+          maxLength: 5000
+    Annotation:
+      type: object
+      additionalProperties: false
+      required: [id, documentId, pageNumber, rects, quote, note, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        pageNumber:
+          type: integer
+        rects:
+          type: array
+          items:
+            $ref: "#/components/schemas/Rect"
+        quote:
+          type: string
+        note:
+          type: string
+          description: Empty for a plain highlight.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    AnnotationEnvelope:
+      type: object
+      additionalProperties: false
+      required: [annotation]
+      properties:
+        annotation:
+          $ref: "#/components/schemas/Annotation"
+    AnnotationList:
+      type: object
+      additionalProperties: false
+      required: [annotations]
+      properties:
+        annotations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Annotation"
+    InkColor:
+      type: string
+      enum: [black, blue, red]
+    Point:
+      description: One point of a stroke in 0–1 page coordinates, from the page's top-left corner.
+      type: object
+      additionalProperties: false
+      required: [x, y]
+      properties:
+        x:
+          type: number
+          minimum: 0
+          maximum: 1
+        y:
+          type: number
+          minimum: 0
+          maximum: 1
+    StrokeInput:
+      type: object
+      additionalProperties: false
+      required: [pageNumber, color, points]
+      properties:
+        pageNumber:
+          type: integer
+          minimum: 1
+          maximum: 100000
+        color:
+          $ref: "#/components/schemas/InkColor"
+        points:
+          description: The points of one movement of the pen, in order. A single point is a dot.
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/Point"
+    Stroke:
+      type: object
+      additionalProperties: false
+      required: [id, documentId, pageNumber, color, points, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        pageNumber:
+          type: integer
+        color:
+          $ref: "#/components/schemas/InkColor"
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/Point"
+        createdAt:
+          type: string
+          format: date-time
+    StrokeEnvelope:
+      type: object
+      additionalProperties: false
+      required: [stroke]
+      properties:
+        stroke:
+          $ref: "#/components/schemas/Stroke"
+    StrokeList:
+      type: object
+      additionalProperties: false
+      required: [strokes]
+      properties:
+        strokes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Stroke"
+    TextBoxFields:
+      description: |
+        What can change about a text box. (x, y) is its top-left corner in
+        0–1 page coordinates; the text wraps at the page's right edge.
+      type: object
+      required: [x, y, text, color, fontSize]
+      properties:
+        x:
+          type: number
+          minimum: 0
+          exclusiveMaximum: 1
+        y:
+          type: number
+          minimum: 0
+          exclusiveMaximum: 1
+        text:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: May span several lines. Trimmed.
+          example: kuća
+        color:
+          $ref: "#/components/schemas/InkColor"
+        fontSize:
+          type: integer
+          minimum: 8
+          maximum: 48
+          description: The text's size in CSS pixels at 100% zoom; it grows with the zoom.
+          example: 14
+    TextBoxInput:
+      description: The body of PUT /api/text-boxes/{id}, which replaces every field.
+      allOf:
+        - $ref: "#/components/schemas/TextBoxFields"
+      unevaluatedProperties: false
+    NewTextBoxInput:
+      description: The body of POST /api/documents/{id}/text-boxes.
+      allOf:
+        - $ref: "#/components/schemas/TextBoxFields"
+      required: [pageNumber]
+      properties:
+        pageNumber:
+          type: integer
+          minimum: 1
+          maximum: 100000
+      unevaluatedProperties: false
+    TextBox:
+      type: object
+      additionalProperties: false
+      required: [id, documentId, pageNumber, x, y, text, color, fontSize, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        pageNumber:
+          type: integer
+        x:
+          type: number
+        y:
+          type: number
+        text:
+          type: string
+        color:
+          $ref: "#/components/schemas/InkColor"
+        fontSize:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    TextBoxEnvelope:
+      type: object
+      additionalProperties: false
+      required: [textBox]
+      properties:
+        textBox:
+          $ref: "#/components/schemas/TextBox"
+    TextBoxList:
+      type: object
+      additionalProperties: false
+      required: [textBoxes]
+      properties:
+        textBoxes:
+          type: array
+          items:
+            $ref: "#/components/schemas/TextBox"
     Error:
       description: Envelope returned by every non-2xx response except /api/health.
       type: object

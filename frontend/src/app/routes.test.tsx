@@ -19,7 +19,7 @@ describe("routing and access", () => {
     const nav = screen.getByRole("navigation", { name: "Main" });
     expect(within(nav).getByRole("link", { name: "My workspace" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("Student")).toBeInTheDocument();
-    expect(screen.getByText(/your notebook/)).toBeInTheDocument();
+    expect(await screen.findByText("Day streak")).toBeInTheDocument();
   });
 
   it("shows a teacher the teacher navigation", async () => {
@@ -30,6 +30,20 @@ describe("routing and access", () => {
     expect(screen.getByText("Teacher")).toBeInTheDocument();
     expect(screen.getByText(/classes, assignments and student work/)).toBeInTheDocument();
   });
+
+  it.each(["/lessons", "/lessons/l1", "/documents/d1", "/vocabulary"])(
+    "sends a teacher from the student page %s to their workspace",
+    async (path) => {
+      const fetchSpy = mockApi({ "GET /api/me": { status: 200, body: { user: teacher } } });
+      const router = renderApp(path);
+      expect(await screen.findByRole("heading", { level: 1, name: "Dobar dan, Marko." })).toBeInTheDocument();
+      expect(router.state.location.pathname).toBe("/");
+      const studentApi = fetchSpy.mock.calls.filter(
+        ([url]) => typeof url === "string" && /^\/api\/(lessons|documents|vocabulary)/.test(url),
+      );
+      expect(studentApi).toEqual([]);
+    },
+  );
 
   it("sends logged-in users away from the login and sign-up pages", async () => {
     mockApi({ "GET /api/me": { status: 200, body: { user: student } } });

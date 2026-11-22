@@ -22,7 +22,8 @@ const NETWORK_ERROR_MESSAGE = "Could not reach Sveska. Check your connection and
 const UNEXPECTED_ERROR_MESSAGE = "Something went wrong on our side. Try again.";
 
 /**
- * Sends a JSON request to the API. Resolves with the parsed body (or
+ * Sends a request to the API. A FormData body goes out as multipart (for
+ * uploads); any other body as JSON. Resolves with the parsed body (or
  * undefined for 204) and rejects with ApiError for any non-2xx response.
  * An aborted request rejects with the browser's AbortError instead, so
  * callers can tell a cancelled request from a failed one.
@@ -35,7 +36,10 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   const init: RequestInit = { method, credentials: "same-origin", headers };
-  if (body !== undefined) {
+  if (body instanceof FormData) {
+    // No Content-Type: the browser sets multipart/form-data with its boundary.
+    init.body = body;
+  } else if (body !== undefined) {
     headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(body);
   }
@@ -73,4 +77,9 @@ function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
     typeof (error as Record<string, unknown>)["code"] === "string" &&
     typeof (error as Record<string, unknown>)["message"] === "string"
   );
+}
+
+/** The API's message for an ApiError, which is safe to show; the fallback for anything else. */
+export function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof ApiError ? error.message : fallback;
 }

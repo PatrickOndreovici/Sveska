@@ -20,6 +20,8 @@ const (
 	// NotFound means the resource does not exist or belongs to someone else.
 	// Services use it for both, so callers cannot probe which ids exist.
 	NotFound Kind = "not_found"
+	// Forbidden means the caller is logged in but their role may not do this.
+	Forbidden Kind = "forbidden"
 )
 
 // Error is an expected, user-facing failure.

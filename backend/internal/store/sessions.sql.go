@@ -37,19 +37,21 @@ func (q *Queries) DeleteSession(ctx context.Context, tokenHash []byte) error {
 }
 
 const getSessionUser = `-- name: GetSessionUser :one
-SELECT u.id, u.email, u.display_name, u.role, u.created_at
+SELECT u.id, u.email, u.display_name, u.role, u.created_at, a.updated_at AS avatar_updated_at
 FROM sessions s
 JOIN users u ON u.id = s.user_id
+LEFT JOIN user_avatars a ON a.user_id = u.id
 WHERE s.token_hash = $1
   AND s.expires_at > now()
 `
 
 type GetSessionUserRow struct {
-	ID          string
-	Email       string
-	DisplayName string
-	Role        UserRole
-	CreatedAt   time.Time
+	ID              string
+	Email           string
+	DisplayName     string
+	Role            UserRole
+	CreatedAt       time.Time
+	AvatarUpdatedAt *time.Time
 }
 
 // Returns the user behind an unexpired session.
@@ -62,6 +64,7 @@ func (q *Queries) GetSessionUser(ctx context.Context, tokenHash []byte) (GetSess
 		&i.DisplayName,
 		&i.Role,
 		&i.CreatedAt,
+		&i.AvatarUpdatedAt,
 	)
 	return i, err
 }

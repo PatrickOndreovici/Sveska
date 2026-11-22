@@ -16,6 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"learning-serbian-platform/backend/internal/filestore"
 	"learning-serbian-platform/backend/internal/identity"
 	"learning-serbian-platform/backend/internal/learning"
 	"learning-serbian-platform/backend/internal/store"
@@ -33,18 +34,36 @@ type browser struct {
 
 func newStack(t *testing.T) (*httptest.Server, *pgxpool.Pool) {
 	t.Helper()
+	srv, pool, _ := newStackWithFiles(t)
+	return srv, pool
+}
+
+// newStackWithFiles also returns the directory uploaded files are kept in.
+func newStackWithFiles(t *testing.T) (*httptest.Server, *pgxpool.Pool, string) {
+	t.Helper()
 	pool := testdb.New(t)
 	queries := store.New(pool)
+	filesDir := t.TempDir()
+	files, err := filestore.NewLocal(filesDir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	h := NewRouter(Dependencies{
 		DB:           pool,
 		Auth:         identity.NewService(queries, time.Hour),
+		Profile:      identity.NewProfileService(queries),
+		Dashboard:    learning.NewDashboardService(queries),
 		Vocabulary:   learning.NewVocabularyService(queries),
+		Reviews:      learning.NewReviewService(queries),
+		Lessons:      learning.NewLessonService(queries, files),
+		Annotations:  learning.NewAnnotationService(queries),
+		Drawings:     learning.NewDrawingService(queries),
 		AppOrigin:    testOrigin,
 		CookieSecure: false, // httptest serves plain HTTP; a Secure cookie would never be sent back
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return srv, pool
+	return srv, pool, filesDir
 }
 
 func newBrowser(t *testing.T, srv *httptest.Server) *browser {
