@@ -204,6 +204,18 @@ Rules:
   stops reading past 20 MB, stores bytes via `filestore`, and records metadata
   (size, SHA-256) in PostgreSQL. The file is written first and deleted again
   if the row cannot be inserted.
+- A photo or screenshot of a page (JPEG, PNG, WebP, or HEIC where the
+  browser decodes it) is turned into a one-page PDF in the browser before
+  upload (`lib/pdf/raster.ts`), so the API, the viewer and the drawing tools
+  only ever deal with PDFs. The image is redrawn on a white canvas, which
+  applies a photo's EXIF rotation, and shrunk to at most 3000 px a side.
+- Exporting saves the worksheet with the student's writing, to hand in: a
+  PDF of this page, the pages written on or all pages, or a PNG or JPEG of
+  this page. It is done in the browser: PDF.js draws each page on a canvas,
+  `lib/pdf/paintInk.ts` paints the strokes and text over it as DrawingLayer
+  shows them, and `lib/pdf/jpegPdf.ts`, a small PDF writer, puts the pages
+  in a PDF as JPEGs. Exported pages are pictures, so their text is no longer
+  selectable; highlights and notes are left out.
 - Downloads are served by the API after an authorization check. No public URLs.
 - PDF.js (`pdfjs-dist`) renders pages in the browser with its worker, and lays
   the page's text over the canvas as invisible, selectable spans (its text

@@ -23,7 +23,7 @@ var (
 	}
 	testTextBox = learning.TextBox{
 		ID: textBoxID, DocumentID: documentID, PageNumber: 1,
-		TextBoxFields: learning.TextBoxFields{X: 0.4, Y: 0.5, Text: "kuća", Color: learning.InkBlue},
+		TextBoxFields: learning.TextBoxFields{X: 0.4, Y: 0.5, Text: "kuća", Color: learning.InkBlue, FontSize: 14},
 		CreatedAt:     testTime, UpdatedAt: testTime,
 	}
 )
@@ -87,7 +87,7 @@ func newDrawingsRouter(d *fakeDrawings) http.Handler {
 
 const (
 	strokeBody  = `{"pageNumber":2,"color":"red","points":[{"x":0.2,"y":0.3},{"x":0.25,"y":0.28}]}`
-	textBoxBody = `{"pageNumber":1,"x":0.4,"y":0.5,"text":"kuća","color":"blue"}`
+	textBoxBody = `{"pageNumber":1,"x":0.4,"y":0.5,"text":"kuća","color":"blue","fontSize":14}`
 )
 
 func TestDrawingRoutesRequireSession(t *testing.T) {
@@ -97,7 +97,7 @@ func TestDrawingRoutesRequireSession(t *testing.T) {
 		{http.MethodDelete, "/api/strokes/" + strokeID, ""},
 		{http.MethodGet, "/api/documents/" + documentID + "/text-boxes", ""},
 		{http.MethodPost, "/api/documents/" + documentID + "/text-boxes", textBoxBody},
-		{http.MethodPut, "/api/text-boxes/" + textBoxID, `{"x":0.4,"y":0.5,"text":"kuća","color":"blue"}`},
+		{http.MethodPut, "/api/text-boxes/" + textBoxID, `{"x":0.4,"y":0.5,"text":"kuća","color":"blue","fontSize":14}`},
 		{http.MethodDelete, "/api/text-boxes/" + textBoxID, ""},
 	}
 	for _, rt := range routes {
@@ -182,7 +182,7 @@ func TestCreateTextBox(t *testing.T) {
 	got := body["textBox"]
 	for key, value := range map[string]any{
 		"id": textBoxID, "documentId": documentID, "pageNumber": 1.0, "x": 0.4, "y": 0.5,
-		"text": "kuća", "color": "blue", "createdAt": "2026-10-23T12:00:00Z", "updatedAt": "2026-10-23T12:00:00Z",
+		"text": "kuća", "color": "blue", "fontSize": 14.0, "createdAt": "2026-10-23T12:00:00Z", "updatedAt": "2026-10-23T12:00:00Z",
 	} {
 		if got[key] != value {
 			t.Errorf("textBox[%q] = %v, want %v", key, got[key], value)
@@ -194,8 +194,8 @@ func TestUpdateListAndDeleteTextBoxes(t *testing.T) {
 	d := &fakeDrawings{}
 	h := newDrawingsRouter(d)
 
-	rec := do(t, h, http.MethodPut, "/api/text-boxes/"+textBoxID, loggedIn(`{"x":0.1,"y":0.2,"text":"kuće","color":"black"}`))
-	want := learning.TextBoxFields{X: 0.1, Y: 0.2, Text: "kuće", Color: learning.InkBlack}
+	rec := do(t, h, http.MethodPut, "/api/text-boxes/"+textBoxID, loggedIn(`{"x":0.1,"y":0.2,"text":"kuće","color":"black","fontSize":20}`))
+	want := learning.TextBoxFields{X: 0.1, Y: 0.2, Text: "kuće", Color: learning.InkBlack, FontSize: 20}
 	if rec.Code != http.StatusOK || d.lastID != textBoxID || d.lastFields != want {
 		t.Errorf("update = %d, service got %q %+v", rec.Code, d.lastID, d.lastFields)
 	}

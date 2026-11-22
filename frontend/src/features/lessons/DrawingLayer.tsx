@@ -1,23 +1,25 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { cx } from "../../components/ui/cx";
 import { MAX_STROKE_POINTS, MAX_TEXT_BOX_LENGTH } from "../../lib/api/drawings";
 import type { InkColor, Point, Stroke, TextBox, TextBoxInput } from "../../lib/api/types";
 import { distanceToStroke, farEnough, strokePath, toPagePoint } from "../../lib/pdf/ink";
+import { LINE_HEIGHT, STROKE_WIDTH } from "../../lib/pdf/paintInk";
 import type { Erased } from "./useDrawings";
 
 /** What a pointer on the page does: select text, draw, type or erase. */
 export type Tool = "select" | "pen" | "text" | "eraser";
 
-/** Text size and line width at 100% zoom, in CSS pixels; both grow with the zoom. */
-const FONT_SIZE = 14;
-const LINE_HEIGHT = 1.25;
-const STROKE_WIDTH = 2;
 /** How close, in screen pixels, the eraser must pass to a stroke's line. */
 const ERASER_REACH = 8;
 /** How far, in screen pixels, text must be dragged before it moves rather than opens. */
 const DRAG_THRESHOLD = 4;
 /** Text starts left of and above this, so it stays on the page as the API requires. */
 const MAX_START = 0.99;
+/**
+ * Marks controls that may take the focus while text is being typed without
+ * finishing it, such as the text size, which then applies to that text.
+ */
+export const KEEPS_TEXT_OPEN = "data-keeps-text-open";
 
 /** Full class names, so Tailwind finds them. */
 export const PEN_CLASSES: Record<InkColor, { text: string; stroke: string; fill: string }> = {
@@ -61,6 +63,10 @@ type DrawingLayerProps = {
   scale: number;
   tool: Tool;
   color: InkColor;
+  /** The size of new text, and of the text being typed, in CSS pixels at 100% zoom. */
+  fontSize: number;
+  /** Called with a text's size when it is opened for editing, so the size control shows it. */
+  onFontSizeChange: (size: number) => void;
   /** This page's strokes and text boxes. */
   strokes: readonly Stroke[];
   textBoxes: readonly TextBox[];
@@ -79,7 +85,8 @@ type DrawingLayerProps = {
  * lets every pointer through to the PDF's text.
  */
 export function DrawingLayer(props: DrawingLayerProps) {
-  const { scale, tool, color, strokes, textBoxes, onDraw, onErase, onAddText, onChangeText } = props;
+  const { scale, tool, color, fontSize, onFontSizeChange, strokes, textBoxes, onDraw, onErase, onAddText, onChangeText } =
+    props;
   const surfaceRef = useRef<HTMLDivElement>(null);
   const pen = useRef<{ page: DOMRect; points: Point[] } | null>(null);
   const [draft, setDraft] = useState<readonly Point[] | null>(null);
@@ -111,7 +118,7 @@ export function DrawingLayer(props: DrawingLayerProps) {
     if (!open) return;
     setEditor(null);
     const text = open.text.trim();
-    const fields = { x: open.x, y: open.y, text, color: open.color };
+    const fields = { x: open.x, y: open.y, text, color: open.color, fontSize };
     if (open.id === null) {
       if (text) onAddText(fields);
       return;
@@ -120,8 +127,32 @@ export function DrawingLayer(props: DrawingLayerProps) {
     if (!box) return;
     // Clearing the text deletes it, as a text box cannot be empty.
     if (!text) onErase({ strokes: [], textBoxes: [box.id] });
-    else if (text !== box.text) onChangeText(box.id, fields);
+    else if (text !== box.text || fontSize !== box.fontSize) onChangeText(box.id, fields);
   }
+
+  // While text is open, a press or the focus going anywhere but the page or
+  // a control that keeps it open finishes it, as a blur would. The size
+  // field takes the focus from the text without finishing it, so the text's
+  // own blur cannot be relied on alone.
+  const finishIfOutside = useEffectEvent((target: EventTarget | null) => {
+    const inside =
+      target instanceof Element &&
+      (surfaceRef.current?.contains(target) === true || target.closest(`[${KEEPS_TEXT_OPEN}]`) !== null);
+    if (!inside) commitEditor();
+  });
+  const editorOpen = editor !== null;
+  useEffect(() => {
+    if (!editorOpen) return;
+    const onEvent = (event: Event) => {
+      finishIfOutside(event.target);
+    };
+    document.addEventListener("pointerdown", onEvent, true);
+    document.addEventListener("focusin", onEvent);
+    return () => {
+      document.removeEventListener("pointerdown", onEvent, true);
+      document.removeEventListener("focusin", onEvent);
+    };
+  }, [editorOpen]);
 
   function eraseAt(clientX: number, clientY: number) {
     const sweep = eraser.current;
@@ -260,8 +291,9 @@ export function DrawingLayer(props: DrawingLayerProps) {
           y: p.y,
           text: p.box.text,
           color: p.box.color,
+          fontSize: p.box.fontSize,
         });
-      else
+      else {
         setEditor({
           id: p.box.id,
           x: p.box.x,
@@ -269,6 +301,8 @@ export function DrawingLayer(props: DrawingLayerProps) {
           text: p.box.text,
           color: p.box.color,
         });
+        onFontSizeChange(p.box.fontSize);
+      }
       return;
     }
     // That click closed the text being typed; the next one starts new text.
@@ -276,7 +310,7 @@ export function DrawingLayer(props: DrawingLayerProps) {
     const page = surfaceRef.current.getBoundingClientRect();
     const at = toPagePoint(event.clientX, event.clientY, page);
     // Centres the first line on the click, as on a line to fill in.
-    const halfLine = (FONT_SIZE * scale * LINE_HEIGHT) / 2 / page.height;
+    const halfLine = (fontSize * scale * LINE_HEIGHT) / 2 / page.height;
     setEditor({
       id: null,
       x: clampStart(at.x),
@@ -298,10 +332,10 @@ export function DrawingLayer(props: DrawingLayerProps) {
   const shownStrokes = erasing ? strokes.filter((s) => !erasing.strokes.includes(s.id)) : strokes;
   const shownTextBoxes = textBoxes.filter((b) => b.id !== editor?.id && !erasing?.textBoxes.includes(b.id));
   const lineWidth = { strokeWidth: STROKE_WIDTH * scale };
-  const textStyle = {
-    fontSize: `${String(FONT_SIZE * scale)}px`,
+  const textStyle = (size: number) => ({
+    fontSize: `${String(size * scale)}px`,
     lineHeight: LINE_HEIGHT,
-  };
+  });
   const editorLines = editor?.text.split("\n") ?? [];
 
   return (
@@ -365,7 +399,7 @@ export function DrawingLayer(props: DrawingLayerProps) {
               tool === "text" && "cursor-move touch-none",
             )}
             style={{
-              ...textStyle,
+              ...textStyle(b.fontSize),
               left: `${String(at.x * 100)}%`,
               top: `${String(at.y * 100)}%`,
               maxWidth: `${String((1 - at.x) * 100)}%`,
@@ -397,7 +431,11 @@ export function DrawingLayer(props: DrawingLayerProps) {
               setEditor(null);
             }
           }}
-          onBlur={commitEditor}
+          onBlur={(event) => {
+            if (!(event.relatedTarget instanceof Element && event.relatedTarget.closest(`[${KEEPS_TEXT_OPEN}]`))) {
+              commitEditor();
+            }
+          }}
           // Clicks inside it place the caret; they are not clicks on the page.
           onPointerDown={(event) => {
             event.stopPropagation();
@@ -410,7 +448,7 @@ export function DrawingLayer(props: DrawingLayerProps) {
             PEN_CLASSES[editor.color].text,
           )}
           style={{
-            ...textStyle,
+            ...textStyle(fontSize),
             left: `${String(editor.x * 100)}%`,
             top: `${String(editor.y * 100)}%`,
             width: `${String(Math.max(...editorLines.map((l) => l.length), 2) + 1)}ch`,

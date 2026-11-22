@@ -11,9 +11,9 @@ import (
 
 const createTextBox = `-- name: CreateTextBox :one
 
-INSERT INTO text_boxes (owner_id, document_id, page_number, x, y, body, color)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, owner_id, document_id, page_number, x, y, body, color, created_at, updated_at
+INSERT INTO text_boxes (owner_id, document_id, page_number, x, y, body, color, font_size)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, owner_id, document_id, page_number, x, y, body, color, created_at, updated_at, font_size
 `
 
 type CreateTextBoxParams struct {
@@ -24,6 +24,7 @@ type CreateTextBoxParams struct {
 	Y          float64
 	Body       string
 	Color      InkColor
+	FontSize   int32
 }
 
 // Every query filters on owner_id: someone else's text box behaves exactly
@@ -39,6 +40,7 @@ func (q *Queries) CreateTextBox(ctx context.Context, arg CreateTextBoxParams) (T
 		arg.Y,
 		arg.Body,
 		arg.Color,
+		arg.FontSize,
 	)
 	var i TextBox
 	err := row.Scan(
@@ -52,6 +54,7 @@ func (q *Queries) CreateTextBox(ctx context.Context, arg CreateTextBoxParams) (T
 		&i.Color,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FontSize,
 	)
 	return i, err
 }
@@ -77,7 +80,7 @@ func (q *Queries) DeleteTextBox(ctx context.Context, arg DeleteTextBoxParams) (i
 }
 
 const listDocumentTextBoxes = `-- name: ListDocumentTextBoxes :many
-SELECT id, owner_id, document_id, page_number, x, y, body, color, created_at, updated_at
+SELECT id, owner_id, document_id, page_number, x, y, body, color, created_at, updated_at, font_size
 FROM text_boxes
 WHERE document_id = $1
   AND owner_id = $2
@@ -110,6 +113,7 @@ func (q *Queries) ListDocumentTextBoxes(ctx context.Context, arg ListDocumentTex
 			&i.Color,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.FontSize,
 		); err != nil {
 			return nil, err
 		}
@@ -127,28 +131,31 @@ SET x          = $1,
     y          = $2,
     body       = $3,
     color      = $4,
+    font_size  = $5,
     updated_at = now()
-WHERE id = $5
-  AND owner_id = $6
-RETURNING id, owner_id, document_id, page_number, x, y, body, color, created_at, updated_at
+WHERE id = $6
+  AND owner_id = $7
+RETURNING id, owner_id, document_id, page_number, x, y, body, color, created_at, updated_at, font_size
 `
 
 type UpdateTextBoxParams struct {
-	X       float64
-	Y       float64
-	Body    string
-	Color   InkColor
-	ID      string
-	OwnerID string
+	X        float64
+	Y        float64
+	Body     string
+	Color    InkColor
+	FontSize int32
+	ID       string
+	OwnerID  string
 }
 
-// Its text, colour and place on the page change; the page does not.
+// Its text, colour, size and place on the page change; the page does not.
 func (q *Queries) UpdateTextBox(ctx context.Context, arg UpdateTextBoxParams) (TextBox, error) {
 	row := q.db.QueryRow(ctx, updateTextBox,
 		arg.X,
 		arg.Y,
 		arg.Body,
 		arg.Color,
+		arg.FontSize,
 		arg.ID,
 		arg.OwnerID,
 	)
@@ -164,6 +171,7 @@ func (q *Queries) UpdateTextBox(ctx context.Context, arg UpdateTextBoxParams) (T
 		&i.Color,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FontSize,
 	)
 	return i, err
 }

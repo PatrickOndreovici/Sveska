@@ -22,6 +22,7 @@ const fieldsOf = (b: TextBox): TextBoxInput => ({
   y: b.y,
   text: b.text,
   color: b.color,
+  fontSize: b.fontSize,
 });
 
 /**

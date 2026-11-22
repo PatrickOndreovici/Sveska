@@ -6,6 +6,7 @@ import { loadPdf, type PdfDocument } from "../../lib/pdf/pdf";
 import { readSelection, type PageSelection } from "../../lib/pdf/selection";
 import { mockApi, student, type MockHandler } from "../../test/mockApi";
 import { renderApp } from "../../test/renderApp";
+import { exportDocument } from "./exportDocument";
 
 // PDF.js cannot run in jsdom; the viewer is tested against a fake document
 // that records which page was drawn at which zoom.
@@ -16,6 +17,12 @@ vi.mock("../../lib/pdf/selection", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/pdf/selection")>()),
   readSelection: vi.fn(() => null),
   clearSelection: vi.fn(),
+}));
+// Exporting draws on canvases, which jsdom lacks; the page is tested up to
+// the request it makes, and the drawing has its own tests.
+vi.mock("./exportDocument", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./exportDocument")>()),
+  exportDocument: vi.fn(),
 }));
 
 const renders: { page: number; scale: number }[] = [];
@@ -28,6 +35,7 @@ function fakePdf(pageCount: number): PdfDocument {
       renders.push({ page, scale });
       return { promise: Promise.resolve(), cancel: () => undefined };
     },
+    rasterizePage: () => Promise.reject(new Error("not in jsdom")),
     destroy,
   };
 }
@@ -443,6 +451,7 @@ const answered: TextBox = {
   y: 0.25,
   text: "kuća",
   color: "blue",
+  fontSize: 14,
   createdAt: "2026-10-23T10:00:00Z",
   updatedAt: "2026-10-23T10:00:00Z",
 };
@@ -564,7 +573,7 @@ describe("DocumentPage drawing", () => {
     expect(layer.querySelectorAll("path[data-stroke]")).toHaveLength(1);
     await waitFor(() => {
       expect(sent(fetchSpy, "POST", "/api/documents/d1/text-boxes")).toEqual([
-        { pageNumber: 1, x: 0.5, y: 0.25, text: "kuća", color: "blue" },
+        { pageNumber: 1, x: 0.5, y: 0.25, text: "kuća", color: "blue", fontSize: 14 },
       ]);
     });
     expect(sent(fetchSpy, "POST", "/api/documents/d1/strokes")).toEqual([
@@ -589,7 +598,7 @@ describe("DocumentPage drawing", () => {
     await waitFor(() => {
       // The first line is centred on the click: half a 17.5px line above it.
       expect(sent(fetchSpy, "POST", "/api/documents/d1/text-boxes")).toEqual([
-        { pageNumber: 1, x: 0.5, y: 0.4891, text: "kuća", color: "blue" },
+        { pageNumber: 1, x: 0.5, y: 0.4891, text: "kuća", color: "blue", fontSize: 14 },
       ]);
     });
   });
@@ -650,10 +659,96 @@ describe("DocumentPage drawing", () => {
       expect(calls(fetchSpy, "DELETE", "/api/text-boxes/t1")).toHaveLength(1);
     });
     expect(sent(fetchSpy, "PUT", "/api/text-boxes/t1")).toEqual([
-      { x: 0.5, y: 0.25, text: "kuće", color: "blue" },
-      { x: 0.6, y: 0.35, text: "kuće", color: "blue" },
+      { x: 0.5, y: 0.25, text: "kuće", color: "blue", fontSize: 14 },
+      { x: 0.6, y: 0.35, text: "kuće", color: "blue", fontSize: 14 },
     ]);
     expect(screen.queryByText("kuće")).not.toBeInTheDocument();
+  });
+
+  it("types new text in the size chosen", async () => {
+    const { fetchSpy } = renderDocument("/documents/d1", [], drawingApi());
+    await pickTool("Text");
+    const size = screen.getByRole("textbox", { name: "Text size in pixels" });
+    expect(size).toHaveValue("14");
+    await userEvent.clear(size);
+    await userEvent.type(size, "20");
+    const layer = await drawingLayer();
+
+    drag(layer, layer, [[300, 400]]);
+    const input = await screen.findByRole("textbox", { name: "Text on the page" });
+    expect(input).toHaveStyle({ fontSize: "20px" });
+    await userEvent.type(input, "slatko{Enter}");
+
+    expect(await screen.findByText("slatko")).toHaveStyle({ fontSize: "20px" });
+    await waitFor(() => {
+      // Half a 25px line above the click.
+      expect(sent(fetchSpy, "POST", "/api/documents/d1/text-boxes")).toEqual([
+        { pageNumber: 1, x: 0.5, y: 0.4844, text: "slatko", color: "black", fontSize: 20 },
+      ]);
+    });
+  });
+
+  it("keeps sizes within 8 to 48 pixels", async () => {
+    renderDocument("/documents/d1", [], drawingApi());
+    await pickTool("Text");
+    const size = screen.getByRole("textbox", { name: "Text size in pixels" });
+
+    await userEvent.clear(size);
+    await userEvent.type(size, "99");
+    await userEvent.tab();
+    // "9" was a size on the way; "99" is not one.
+    expect(size).toHaveValue("9");
+    await userEvent.click(screen.getByRole("button", { name: "Smaller text" }));
+    expect(size).toHaveValue("8");
+    expect(screen.getByRole("button", { name: "Smaller text" })).toBeDisabled();
+  });
+
+  it("resizes text being edited without closing it", async () => {
+    const { fetchSpy } = renderDocument("/documents/d1", [], drawingApi([], [{ ...answered, fontSize: 22 }]));
+    await pickTool("Text");
+    const layer = await drawingLayer();
+
+    drag(await screen.findByText("kuća"), layer, [[310, 210]]);
+    const input = await screen.findByRole("textbox", { name: "Text on the page" });
+    const size = screen.getByRole("textbox", { name: "Text size in pixels" });
+    // The size field shows the size of the text opened.
+    expect(size).toHaveValue("22");
+
+    await userEvent.click(screen.getByRole("button", { name: "Larger text" }));
+    await userEvent.click(screen.getByRole("button", { name: "Larger text" }));
+    expect(input).toHaveFocus();
+    expect(input).toHaveStyle({ fontSize: "24px" });
+
+    // Typing a size takes the focus but leaves the text open.
+    await userEvent.clear(size);
+    await userEvent.type(size, "30");
+    expect(screen.getByRole("textbox", { name: "Text on the page" })).toHaveStyle({ fontSize: "30px" });
+
+    // A press elsewhere on the page finishes it.
+    drag(layer, layer, [[60, 700]]);
+    await waitFor(() => {
+      expect(sent(fetchSpy, "PUT", "/api/text-boxes/t1")).toEqual([
+        { x: 0.5, y: 0.25, text: "kuća", color: "blue", fontSize: 30 },
+      ]);
+    });
+    expect(screen.getByText("kuća")).toHaveStyle({ fontSize: "30px" });
+  });
+
+  it("finishes the text when something outside the page is pressed", async () => {
+    const { fetchSpy } = renderDocument("/documents/d1", [], drawingApi());
+    await pickTool("Text");
+    const layer = await drawingLayer();
+
+    drag(layer, layer, [[300, 400]]);
+    await userEvent.type(await screen.findByRole("textbox", { name: "Text on the page" }), "med");
+    await userEvent.click(screen.getByRole("textbox", { name: "Text size in pixels" }));
+    expect(screen.getByRole("textbox", { name: "Text on the page" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("heading", { level: 1 }));
+
+    expect(await screen.findByText("med")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(calls(fetchSpy, "POST", "/api/documents/d1/text-boxes")).toHaveLength(1);
+    });
   });
 
   it("undoes with Ctrl+Z", async () => {
@@ -699,5 +794,68 @@ describe("DocumentPage drawing", () => {
     });
     expect(calls(fetchSpy, "GET", "/api/documents/d1/strokes")).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+  });
+});
+
+describe("DocumentPage export", () => {
+  const onPage3: TextBox = { ...answered, id: "t3", pageNumber: 3 };
+
+  /** Opens the export dialog once the drawing has loaded. */
+  async function openExport() {
+    const button = await screen.findByRole("button", { name: "Export" });
+    await waitFor(() => {
+      expect(button).toBeEnabled();
+    });
+    await userEvent.click(button);
+    return within(screen.getByRole("dialog", { name: "Export with your writing" }));
+  }
+
+  it("exports the pages written on as a PDF", async () => {
+    vi.mocked(exportDocument).mockResolvedValueOnce();
+    renderDocument("/documents/d1", [], drawingApi([circled], [onPage3]));
+
+    const dialog = await openExport();
+    await userEvent.click(dialog.getByLabelText("Pages you wrote on (2 pages)"));
+    await userEvent.click(dialog.getByRole("button", { name: "Export" }));
+
+    expect(exportDocument).toHaveBeenCalledWith({
+      url: "/api/documents/d1/file",
+      title: "Čitanka",
+      format: "pdf",
+      pages: [1, 3],
+      strokes: [circled],
+      textBoxes: [onPage3],
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("exports a picture of the page being read", async () => {
+    vi.mocked(exportDocument).mockResolvedValueOnce();
+    renderDocument("/documents/d1?page=2", [], drawingApi());
+
+    const dialog = await openExport();
+    expect(dialog.getByLabelText("Pages you wrote on (none yet)")).toBeDisabled();
+    await userEvent.click(dialog.getByLabelText(/^PNG/));
+    expect(dialog.queryByLabelText("All pages")).not.toBeInTheDocument();
+    expect(dialog.getByText("The picture is of the page you are on, page 2.")).toBeInTheDocument();
+    await userEvent.click(dialog.getByRole("button", { name: "Export" }));
+
+    expect(exportDocument).toHaveBeenCalledWith(expect.objectContaining({ format: "png", pages: [2] }));
+  });
+
+  it("says when the file could not be made, and stays open", async () => {
+    vi.mocked(exportDocument).mockRejectedValueOnce(new Error("canvas too large"));
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    renderDocument("/documents/d1", [], drawingApi());
+
+    const dialog = await openExport();
+    await userEvent.click(dialog.getByLabelText("All pages"));
+    await userEvent.click(dialog.getByRole("button", { name: "Export" }));
+
+    expect(await dialog.findByRole("alert")).toHaveTextContent("Could not export the pages. Try again.");
+    expect(exportDocument).toHaveBeenCalledWith(expect.objectContaining({ format: "pdf", pages: "all" }));
+    expect(screen.getByRole("dialog", { name: "Export with your writing" })).toBeInTheDocument();
   });
 });

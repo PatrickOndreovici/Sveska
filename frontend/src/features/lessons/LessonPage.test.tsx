@@ -1,10 +1,17 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { LessonDocument } from "../../lib/api/types";
+import { imageFileToPdf } from "../../lib/pdf/raster";
 import { mockApi, student, type MockHandler } from "../../test/mockApi";
 import { renderApp } from "../../test/renderApp";
 import { lesson } from "./LessonsPage.test";
+
+// jsdom cannot decode images or draw on a canvas; the conversion has its own tests.
+vi.mock("../../lib/pdf/raster", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/pdf/raster")>()),
+  imageFileToPdf: vi.fn(),
+}));
 
 function doc(id: string, title: string, byteSize = 1_258_291): LessonDocument {
   return { id, lessonId: "l1", title, byteSize, createdAt: "2026-10-23T10:00:00Z" };
@@ -58,7 +65,7 @@ describe("LessonPage", () => {
 
   it("uploads a chosen PDF and lists it", async () => {
     const { fetchSpy } = renderLesson([citanka]);
-    const input = await screen.findByLabelText("Add a PDF");
+    const input = await screen.findByLabelText("Add a PDF or a picture");
 
     await userEvent.upload(input, pdf("Glagoli.pdf"));
 
@@ -70,9 +77,37 @@ describe("LessonPage", () => {
     expect((body as FormData).get("file")).toBeInstanceOf(File);
   });
 
+  it("makes a photo into a PDF before uploading it", async () => {
+    const converted = pdf("IMG_2265.pdf");
+    vi.mocked(imageFileToPdf).mockResolvedValueOnce(converted);
+    const { fetchSpy } = renderLesson([]);
+    const photo = new File(["jpeg bytes"], "IMG_2265.jpeg", { type: "image/jpeg" });
+
+    await userEvent.upload(await screen.findByLabelText("Add a PDF or a picture"), photo);
+
+    expect(await screen.findByText("Added Glagoli.")).toBeInTheDocument();
+    expect(imageFileToPdf).toHaveBeenCalledWith(photo);
+    const call = fetchSpy.mock.calls.find(([url]) => url === "/api/lessons/l1/documents");
+    expect((call?.[1]?.body as FormData).get("file")).toBe(converted);
+  });
+
+  it("says when a picture cannot be opened, without uploading", async () => {
+    vi.mocked(imageFileToPdf).mockRejectedValueOnce(new Error("cannot decode"));
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { fetchSpy } = renderLesson([]);
+
+    await userEvent.upload(
+      await screen.findByLabelText("Add a PDF or a picture"),
+      new File(["?"], "scan.heic", { type: "image/heic" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This picture could not be opened. Try a JPEG or PNG.");
+    expect(fetchSpy.mock.calls.some(([url]) => url === "/api/lessons/l1/documents")).toBe(false);
+  });
+
   it("refuses a PDF over 20 MB without uploading it", async () => {
     const { fetchSpy } = renderLesson([]);
-    const input = await screen.findByLabelText("Add a PDF");
+    const input = await screen.findByLabelText("Add a PDF or a picture");
 
     await userEvent.upload(input, pdf("huge.pdf", 21 * 1024 * 1024));
 
@@ -90,10 +125,10 @@ describe("LessonPage", () => {
       },
     });
 
-    await userEvent.upload(await screen.findByLabelText("Add a PDF"), pdf("fake.pdf"));
+    await userEvent.upload(await screen.findByLabelText("Add a PDF or a picture"), pdf("fake.pdf"));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Choose a PDF file.");
-    expect(screen.getByLabelText("Add a PDF")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Add a PDF or a picture")).toHaveAttribute("aria-invalid", "true");
   });
 
   it("deletes a PDF after confirming", async () => {

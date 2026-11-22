@@ -11,6 +11,7 @@ import {
   updateAnnotationNote,
 } from "../../lib/api/annotations";
 import { ApiError, errorMessage } from "../../lib/api/client";
+import { DEFAULT_FONT_SIZE } from "../../lib/api/drawings";
 import { documentFileUrl, getDocument } from "../../lib/api/lessons";
 import type { Annotation, DocumentDetail, InkColor } from "../../lib/api/types";
 import { createVocabularyEntry } from "../../lib/api/vocabulary";
@@ -19,6 +20,8 @@ import type { EntryFields } from "../vocabulary/entryFields";
 import { AnnotationPanel } from "./AnnotationPanel";
 import { DrawingLayer, type Tool } from "./DrawingLayer";
 import { DrawingTools } from "./DrawingTools";
+import { ExportDialog, type ExportPages } from "./ExportDialog";
+import { exportDocument, pagesWithInk } from "./exportDocument";
 import { PdfViewer, type TextSelection } from "./PdfViewer";
 import { SaveWordDialog } from "./SaveWordDialog";
 import { useDrawings } from "./useDrawings";
@@ -73,6 +76,8 @@ export function DocumentPage() {
   const { undo } = drawings;
   const [tool, setTool] = useState<Tool>("select");
   const [color, setColor] = useState<InkColor>("black");
+  const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -222,19 +227,35 @@ export function DocumentPage() {
   }
 
   const fileUrl = documentFileUrl(documentId);
+  const writtenPages = pagesWithInk(drawings.strokes ?? [], drawings.textBoxes ?? []);
+  const exportPages = (pages: ExportPages) =>
+    pages === "all" ? "all" : pages === "written" ? writtenPages : [page];
 
   return (
     <div>
       <TextLink to={`/lessons/${detail.lesson.id}`}>← {detail.lesson.title}</TextLink>
       <header className="mt-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
         <h1 className="min-w-0 font-serif text-3xl break-words text-ink sm:text-4xl">{detail.document.title}</h1>
-        <a
-          href={fileUrl}
-          download
-          className="text-sm text-accent underline decoration-rule-strong underline-offset-4 hover:decoration-accent"
-        >
-          Download
-        </a>
+        <div className="flex items-center gap-4">
+          <a
+            href={fileUrl}
+            download
+            className="text-sm text-accent underline decoration-rule-strong underline-offset-4 hover:decoration-accent"
+          >
+            Download
+          </a>
+          <Button
+            variant="secondary"
+            size="sm"
+            // What was written must be loaded, or it would be missing from the file.
+            disabled={drawings.strokes === null || drawings.textBoxes === null}
+            onClick={() => {
+              setExporting(true);
+            }}
+          >
+            Export
+          </Button>
+        </div>
       </header>
 
       {actionError && (
@@ -280,6 +301,8 @@ export function DocumentPage() {
                 }}
                 color={color}
                 onColorChange={setColor}
+                fontSize={fontSize}
+                onFontSizeChange={setFontSize}
                 canUndo={drawings.canUndo}
                 onUndo={undo}
                 drawingReady={drawings.strokes !== null && drawings.textBoxes !== null}
@@ -306,6 +329,8 @@ export function DocumentPage() {
               scale={scale}
               tool={tool}
               color={color}
+              fontSize={fontSize}
+              onFontSizeChange={setFontSize}
               strokes={(drawings.strokes ?? []).filter((s) => s.pageNumber === pageNumber)}
               textBoxes={(drawings.textBoxes ?? []).filter((b) => b.pageNumber === pageNumber)}
               onDraw={(points) => {
@@ -385,6 +410,25 @@ export function DocumentPage() {
         onClose={() => {
           setWordSelection(null);
           clearSelection();
+        }}
+      />
+
+      <ExportDialog
+        open={exporting}
+        page={page}
+        writtenPages={writtenPages}
+        onExport={(format, pages) =>
+          exportDocument({
+            url: fileUrl,
+            title: detail.document.title,
+            format,
+            pages: exportPages(pages),
+            strokes: drawings.strokes ?? [],
+            textBoxes: drawings.textBoxes ?? [],
+          })
+        }
+        onClose={() => {
+          setExporting(false);
         }}
       />
 

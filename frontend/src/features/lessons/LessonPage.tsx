@@ -14,6 +14,7 @@ import {
   uploadDocument,
 } from "../../lib/api/lessons";
 import type { LessonDetail, LessonDocument } from "../../lib/api/types";
+import { imageFileToPdf, isImageFile } from "../../lib/pdf/raster";
 import { formatBytes, formatDate, pdfCount } from "./format";
 import { LessonFields, readLessonForm, type LessonErrors } from "./LessonFields";
 
@@ -219,7 +220,11 @@ export function LessonPage() {
   );
 }
 
-/** A file picker that uploads the chosen PDF straight away. */
+/**
+ * A file picker that uploads the chosen PDF straight away. A photo or
+ * screenshot is first made into a one-page PDF, so it can be written on and
+ * exported like any worksheet.
+ */
 function UploadField({ lessonId, onUploaded }: { lessonId: string; onUploaded: () => void }) {
   const [uploading, setUploading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -227,19 +232,29 @@ function UploadField({ lessonId, onUploaded }: { lessonId: string; onUploaded: (
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function handleChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+    const chosen = event.target.files?.[0];
     // Cleared so choosing the same file again still fires a change.
     event.target.value = "";
-    if (!file) return;
+    if (!chosen) return;
     setError(null);
     setUploaded(null);
-    if (file.size > MAX_DOCUMENT_BYTES) {
-      setError("Choose a PDF of at most 20 MB.");
-      return;
-    }
 
-    setUploading(file.name);
+    setUploading(chosen.name);
     try {
+      let file = chosen;
+      if (isImageFile(chosen)) {
+        try {
+          file = await imageFileToPdf(chosen);
+        } catch (err) {
+          console.error("convert image to PDF", err);
+          setError("This picture could not be opened. Try a JPEG or PNG.");
+          return;
+        }
+      }
+      if (file.size > MAX_DOCUMENT_BYTES) {
+        setError("Choose a PDF of at most 20 MB.");
+        return;
+      }
       const doc = await uploadDocument(lessonId, file);
       setUploaded(doc.title);
       onUploaded();
@@ -258,13 +273,13 @@ function UploadField({ lessonId, onUploaded }: { lessonId: string; onUploaded: (
   return (
     <div className="mt-4 grid gap-1.5">
       <label htmlFor="lesson-upload" className="text-sm font-medium text-ink">
-        Add a PDF
+        Add a PDF or a picture
       </label>
       <input
         ref={inputRef}
         id="lesson-upload"
         type="file"
-        accept="application/pdf,.pdf"
+        accept="application/pdf,.pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif"
         disabled={uploading !== null}
         aria-describedby="lesson-upload-hint"
         aria-invalid={error ? true : undefined}
@@ -274,7 +289,7 @@ function UploadField({ lessonId, onUploaded }: { lessonId: string; onUploaded: (
         className="block w-full text-sm text-ink-muted file:mr-3 file:h-8 file:cursor-pointer file:rounded-sm file:border file:border-rule-strong file:bg-paper-raised file:px-3 file:text-sm file:font-medium file:text-ink hover:file:border-ink disabled:opacity-50"
       />
       <p id="lesson-upload-hint" className="text-sm text-ink-subtle">
-        PDF files up to 20 MB.
+        PDF files up to 20 MB. A photo or screenshot of a page becomes a one-page PDF you can write on.
       </p>
       {error && (
         <p role="alert" className="text-sm text-danger">

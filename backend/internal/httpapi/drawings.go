@@ -53,10 +53,11 @@ type strokeListResponse struct {
 
 // textBoxFieldsBody is the body of PUT /api/text-boxes/{id}.
 type textBoxFieldsBody struct {
-	X     float64 `json:"x"`
-	Y     float64 `json:"y"`
-	Text  string  `json:"text"`
-	Color string  `json:"color"`
+	X        float64 `json:"x"`
+	Y        float64 `json:"y"`
+	Text     string  `json:"text"`
+	Color    string  `json:"color"`
+	FontSize int     `json:"fontSize"`
 }
 
 // newTextBoxRequest is the body of POST /api/documents/{id}/text-boxes.
@@ -103,10 +104,11 @@ func toTextBoxResponse(b learning.TextBox) textBoxResponse {
 		DocumentID: b.DocumentID,
 		PageNumber: b.PageNumber,
 		textBoxFieldsBody: textBoxFieldsBody{
-			X:     b.X,
-			Y:     b.Y,
-			Text:  b.Text,
-			Color: string(b.Color),
+			X:        b.X,
+			Y:        b.Y,
+			Text:     b.Text,
+			Color:    string(b.Color),
+			FontSize: b.FontSize,
 		},
 		CreatedAt: b.CreatedAt.UTC(),
 		UpdatedAt: b.UpdatedAt.UTC(),
@@ -114,7 +116,7 @@ func toTextBoxResponse(b learning.TextBox) textBoxResponse {
 }
 
 func (f textBoxFieldsBody) toFields() learning.TextBoxFields {
-	return learning.TextBoxFields{X: f.X, Y: f.Y, Text: f.Text, Color: learning.InkColor(f.Color)}
+	return learning.TextBoxFields{X: f.X, Y: f.Y, Text: f.Text, Color: learning.InkColor(f.Color), FontSize: f.FontSize}
 }
 
 func (a *api) listStrokes(w http.ResponseWriter, r *http.Request) {

@@ -40,6 +40,10 @@ light and dark with a Light/Dark/System switch), Sveska logo and favicon, UI pri
 - Settings for both roles: display name and profile picture. A dashboard
   on a student's home page: words, lessons and PDFs, highlights and notes,
   activity by day with a streak, and the PDFs to pick up again.
+- Photos and screenshots of pages upload as one-page PDFs, and a worksheet
+  can be exported with its writing as a PDF, PNG or JPEG to send a teacher.
+- Typed text has a size, 8–48 pixels, chosen in the toolbar for new text and
+  for the text being edited.
 
 ## Phase 4 — Quizzes and progress
 

@@ -4,8 +4,8 @@
 -- name: CreateTextBox :one
 -- Fails on text_boxes_document_fkey when the document does not exist or
 -- belongs to someone else.
-INSERT INTO text_boxes (owner_id, document_id, page_number, x, y, body, color)
-VALUES (@owner_id, @document_id, @page_number, @x, @y, @body, @color)
+INSERT INTO text_boxes (owner_id, document_id, page_number, x, y, body, color, font_size)
+VALUES (@owner_id, @document_id, @page_number, @x, @y, @body, @color, @font_size)
 RETURNING *;
 
 -- name: ListDocumentTextBoxes :many
@@ -17,12 +17,13 @@ WHERE document_id = @document_id
 ORDER BY page_number, id;
 
 -- name: UpdateTextBox :one
--- Its text, colour and place on the page change; the page does not.
+-- Its text, colour, size and place on the page change; the page does not.
 UPDATE text_boxes
 SET x          = @x,
     y          = @y,
     body       = @body,
     color      = @color,
+    font_size  = @font_size,
     updated_at = now()
 WHERE id = @id
   AND owner_id = @owner_id

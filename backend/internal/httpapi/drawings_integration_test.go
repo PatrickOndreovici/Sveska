@@ -21,7 +21,7 @@ func stroke(page int, color string) map[string]any {
 }
 
 func textBox(page int, text string) map[string]any {
-	return map[string]any{"pageNumber": page, "x": 0.25, "y": 0.5, "text": text, "color": "blue"}
+	return map[string]any{"pageNumber": page, "x": 0.25, "y": 0.5, "text": text, "color": "blue", "fontSize": 14}
 }
 
 func (b *browser) create(path, envelope string, body map[string]any) string {
@@ -68,7 +68,7 @@ func TestTextBoxesFromTypingToDeleting(t *testing.T) {
 	id := ana.create(path, "textBox", textBox(1, " kuća\nkuće "))
 
 	resp, body := ana.send(http.MethodPut, "/api/text-boxes/"+id, map[string]any{
-		"x": 0.0625, "y": 0.75, "text": "kuća", "color": "red",
+		"x": 0.0625, "y": 0.75, "text": "kuća", "color": "red", "fontSize": 9,
 	})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("update = %d %v", resp.StatusCode, body)
@@ -80,7 +80,7 @@ func TestTextBoxesFromTypingToDeleting(t *testing.T) {
 		t.Fatalf("text boxes = %v", list)
 	}
 	got := list[0].(map[string]any)
-	if got["x"] != 0.0625 || got["y"] != 0.75 || got["text"] != "kuća" || got["color"] != "red" || got["pageNumber"] != 1.0 {
+	if got["x"] != 0.0625 || got["y"] != 0.75 || got["text"] != "kuća" || got["color"] != "red" || got["fontSize"] != 9.0 || got["pageNumber"] != 1.0 {
 		t.Errorf("text box = %v", got)
 	}
 
@@ -134,7 +134,7 @@ func TestDrawingsArePrivate(t *testing.T) {
 	bodies := map[string]map[string]any{
 		"/api/documents/" + docID + "/strokes":    stroke(1, "red"),
 		"/api/documents/" + docID + "/text-boxes": textBox(1, "mine"),
-		"/api/text-boxes/" + textBoxID:            {"x": 0, "y": 0, "text": "mine", "color": "red"},
+		"/api/text-boxes/" + textBoxID:            {"x": 0, "y": 0, "text": "mine", "color": "red", "fontSize": 14},
 	}
 	for _, c := range checks {
 		t.Run(c.method+" "+c.path, func(t *testing.T) {

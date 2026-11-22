@@ -14,6 +14,11 @@ import type {
 /** Limits shared with the API. */
 export const MAX_STROKE_POINTS = 1000;
 export const MAX_TEXT_BOX_LENGTH = 1000;
+/** The sizes text can be typed in, in CSS pixels at 100% zoom. */
+export const MIN_FONT_SIZE = 8;
+export const MAX_FONT_SIZE = 48;
+/** The size text had before it could be chosen. */
+export const DEFAULT_FONT_SIZE = 14;
 
 export async function listStrokes(documentId: string, signal?: AbortSignal): Promise<Stroke[]> {
   const { strokes } = await apiRequest<StrokeList>(

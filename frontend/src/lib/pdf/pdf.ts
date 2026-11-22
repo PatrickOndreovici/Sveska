@@ -6,6 +6,7 @@
  * kilobytes are only downloaded by someone who opens a PDF.
  */
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import type { PagePicture } from "./raster";
 import "./textLayer.css";
 
 /** The elements one page is drawn into. */
@@ -25,6 +26,11 @@ export interface PdfDocument {
    * screens.
    */
   renderPage(pageNumber: number, layers: PageLayers, scale: number): Task<void>;
+  /**
+   * Draws one page (1-based) on a new canvas, `zoom` canvas pixels to one
+   * point, for exporting. Its width and height are the page's size in points.
+   */
+  rasterizePage(pageNumber: number, zoom: number): Promise<PagePicture>;
   destroy(): void;
 }
 
@@ -87,6 +93,17 @@ export function loadPdf(url: string): Task<PdfDocument> {
             textTask?.cancel();
           },
         };
+      },
+      async rasterizePage(pageNumber, zoom) {
+        const page = await doc.getPage(pageNumber);
+        const size = page.getViewport({ scale: 1 });
+        const viewport = page.getViewport({ scale: zoom });
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        // White under the page, as a PDF without a background shows white on screen too.
+        await page.render({ canvas, viewport, background: "#ffffff" }).promise;
+        return { canvas, width: size.width, height: size.height };
       },
       destroy() {
         // Frees the worker's copy of the document too.

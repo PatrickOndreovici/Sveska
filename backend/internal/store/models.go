@@ -395,6 +395,7 @@ type TextBox struct {
 	Color      InkColor
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+	FontSize   int32
 }
 
 type User struct {

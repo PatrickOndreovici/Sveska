@@ -96,7 +96,7 @@ func (f *fakeDrawingStore) CreateTextBox(_ context.Context, arg store.CreateText
 	}
 	row := store.TextBox{
 		ID: f.newID(), OwnerID: arg.OwnerID, DocumentID: arg.DocumentID, PageNumber: arg.PageNumber,
-		X: arg.X, Y: arg.Y, Body: arg.Body, Color: arg.Color, CreatedAt: f.now, UpdatedAt: f.now,
+		X: arg.X, Y: arg.Y, Body: arg.Body, Color: arg.Color, FontSize: arg.FontSize, CreatedAt: f.now, UpdatedAt: f.now,
 	}
 	f.textBoxes[row.ID] = row
 	return row, nil
@@ -122,7 +122,7 @@ func (f *fakeDrawingStore) UpdateTextBox(_ context.Context, arg store.UpdateText
 	if !ok || row.OwnerID != arg.OwnerID {
 		return store.TextBox{}, pgx.ErrNoRows
 	}
-	row.X, row.Y, row.Body, row.Color = arg.X, arg.Y, arg.Body, arg.Color
+	row.X, row.Y, row.Body, row.Color, row.FontSize = arg.X, arg.Y, arg.Body, arg.Color, arg.FontSize
 	row.UpdatedAt = f.now.Add(time.Hour)
 	f.textBoxes[arg.ID] = row
 	return row, nil
@@ -152,7 +152,7 @@ func answer(text string) NewTextBox {
 	return NewTextBox{
 		DocumentID:    anasDocID,
 		PageNumber:    1,
-		TextBoxFields: TextBoxFields{X: 0.4, Y: 0.5, Text: text, Color: InkBlue},
+		TextBoxFields: TextBoxFields{X: 0.4, Y: 0.5, Text: text, Color: InkBlue, FontSize: 14},
 	}
 }
 
@@ -334,6 +334,9 @@ func TestTextBoxesRejectInvalidInput(t *testing.T) {
 		{"blank text", func(in *TextBoxFields) { in.Text = " \n " }, "text"},
 		{"long text", func(in *TextBoxFields) { in.Text = strings.Repeat("ć", maxTextBoxLen+1) }, "text"},
 		{"unknown colour", func(in *TextBoxFields) { in.Color = "pink" }, "color"},
+		{"no size", func(in *TextBoxFields) { in.FontSize = 0 }, "fontSize"},
+		{"too small", func(in *TextBoxFields) { in.FontSize = MinFontSize - 1 }, "fontSize"},
+		{"too large", func(in *TextBoxFields) { in.FontSize = MaxFontSize + 1 }, "fontSize"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -378,15 +381,26 @@ func TestTextBoxesAcceptTheEdgesOfThePage(t *testing.T) {
 	mustWrite(t, svc, in)
 }
 
+func TestTextBoxesAcceptTheSmallestAndLargestSize(t *testing.T) {
+	svc, _ := newDrawingTest()
+	for _, size := range []int{MinFontSize, MaxFontSize} {
+		in := answer("kuća")
+		in.FontSize = size
+		if got := mustWrite(t, svc, in); got.FontSize != size {
+			t.Errorf("FontSize = %d, want %d", got.FontSize, size)
+		}
+	}
+}
+
 func TestUpdateTextBoxMovesAndRewritesIt(t *testing.T) {
 	svc, _ := newDrawingTest()
 	b := mustWrite(t, svc, answer("kuca"))
 
-	updated, err := svc.UpdateTextBox(actorCtx(anaID), b.ID, TextBoxFields{X: 0.1, Y: 0.2, Text: " kuća ", Color: InkBlack})
+	updated, err := svc.UpdateTextBox(actorCtx(anaID), b.ID, TextBoxFields{X: 0.1, Y: 0.2, Text: " kuća ", Color: InkBlack, FontSize: 22})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := TextBoxFields{X: 0.1, Y: 0.2, Text: "kuća", Color: InkBlack}
+	want := TextBoxFields{X: 0.1, Y: 0.2, Text: "kuća", Color: InkBlack, FontSize: 22}
 	if updated.TextBoxFields != want || updated.PageNumber != 1 || updated.ID != b.ID {
 		t.Errorf("updated = %+v", updated)
 	}

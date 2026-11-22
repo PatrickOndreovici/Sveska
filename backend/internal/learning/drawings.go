@@ -49,13 +49,15 @@ type NewInkStroke struct {
 	Points     []Point
 }
 
-// TextBoxFields are what can change about a text box: its text, colour
-// and top-left corner (X, Y) in 0–1 page coordinates.
+// TextBoxFields are what can change about a text box: its text, colour,
+// size and top-left corner (X, Y) in 0–1 page coordinates.
 type TextBoxFields struct {
 	X     float64
 	Y     float64
 	Text  string
 	Color InkColor
+	// FontSize is in CSS pixels at 100% zoom, from MinFontSize to MaxFontSize.
+	FontSize int
 }
 
 // TextBox is text typed onto one page of a PDF, such as the answer to a
@@ -80,6 +82,13 @@ const (
 	// before a long one reaches it.
 	maxStrokePoints = 1000
 	maxTextBoxLen   = 1000
+)
+
+// The sizes text can be typed in: small enough for a crowded table, large
+// enough for a heading. The database checks the same range.
+const (
+	MinFontSize = 8
+	MaxFontSize = 48
 )
 
 // DrawingStore is the subset of generated queries this service needs.
@@ -220,6 +229,7 @@ func (s *DrawingService) CreateTextBox(ctx context.Context, in NewTextBox) (Text
 		Y:          in.Y,
 		Body:       in.Text,
 		Color:      store.InkColor(in.Color),
+		FontSize:   int32(in.FontSize),
 	})
 	if isForeignKeyViolation(err, "text_boxes_document_fkey") {
 		return TextBox{}, errDocumentNotFound
@@ -269,12 +279,13 @@ func (s *DrawingService) UpdateTextBox(ctx context.Context, id string, in TextBo
 	}
 
 	row, err := s.store.UpdateTextBox(ctx, store.UpdateTextBoxParams{
-		ID:      id,
-		OwnerID: actor.User.ID,
-		X:       in.X,
-		Y:       in.Y,
-		Body:    in.Text,
-		Color:   store.InkColor(in.Color),
+		ID:       id,
+		OwnerID:  actor.User.ID,
+		X:        in.X,
+		Y:        in.Y,
+		Body:     in.Text,
+		Color:    store.InkColor(in.Color),
+		FontSize: int32(in.FontSize),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return TextBox{}, errTextBoxNotFound
@@ -340,6 +351,9 @@ func validateTextBox(in TextBoxFields) map[string]string {
 		addProblem(fields, "text", validateLength(in.Text, maxTextBoxLen))
 	}
 	addProblem(fields, "color", validateInkColor(in.Color))
+	if in.FontSize < MinFontSize || in.FontSize > MaxFontSize {
+		fields["fontSize"] = fmt.Sprintf("Choose a size from %d to %d pixels.", MinFontSize, MaxFontSize)
+	}
 	return fields
 }
 
@@ -364,10 +378,11 @@ func textBoxFromRow(row store.TextBox) TextBox {
 		DocumentID: row.DocumentID,
 		PageNumber: int(row.PageNumber),
 		TextBoxFields: TextBoxFields{
-			X:     row.X,
-			Y:     row.Y,
-			Text:  row.Body,
-			Color: InkColor(row.Color),
+			X:        row.X,
+			Y:        row.Y,
+			Text:     row.Body,
+			Color:    InkColor(row.Color),
+			FontSize: int(row.FontSize),
 		},
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,

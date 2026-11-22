@@ -935,6 +935,11 @@ export interface components {
              */
             text: string;
             color: components["schemas"]["InkColor"];
+            /**
+             * @description The text's size in CSS pixels at 100% zoom; it grows with the zoom.
+             * @example 14
+             */
+            fontSize: number;
         };
         /** @description The body of PUT /api/text-boxes/{id}, which replaces every field. */
         TextBoxInput: components["schemas"]["TextBoxFields"];
@@ -952,6 +957,7 @@ export interface components {
             y: number;
             text: string;
             color: components["schemas"]["InkColor"];
+            fontSize: number;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */

@@ -1978,7 +1978,7 @@ components:
         What can change about a text box. (x, y) is its top-left corner in
         0–1 page coordinates; the text wraps at the page's right edge.
       type: object
-      required: [x, y, text, color]
+      required: [x, y, text, color, fontSize]
       properties:
         x:
           type: number
@@ -1996,6 +1996,12 @@ components:
           example: kuća
         color:
           $ref: "#/components/schemas/InkColor"
+        fontSize:
+          type: integer
+          minimum: 8
+          maximum: 48
+          description: The text's size in CSS pixels at 100% zoom; it grows with the zoom.
+          example: 14
     TextBoxInput:
       description: The body of PUT /api/text-boxes/{id}, which replaces every field.
       allOf:
@@ -2015,7 +2021,7 @@ components:
     TextBox:
       type: object
       additionalProperties: false
-      required: [id, documentId, pageNumber, x, y, text, color, createdAt, updatedAt]
+      required: [id, documentId, pageNumber, x, y, text, color, fontSize, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -2033,6 +2039,8 @@ components:
           type: string
         color:
           $ref: "#/components/schemas/InkColor"
+        fontSize:
+          type: integer
         createdAt:
           type: string
           format: date-time
